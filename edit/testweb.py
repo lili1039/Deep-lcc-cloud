@@ -3,6 +3,7 @@ import websockets
 import pickle
 
 Port = 3394
+# host_ip = '8.130.125.99'
 host_ip = '172.17.45.246' # 服务器私网ip
  
 async def server_recv(websocket):
