@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
 numpy
-scipy==1.4.1
 redis
-pandas
-tornado
-requests
 websockets
 asyncio
