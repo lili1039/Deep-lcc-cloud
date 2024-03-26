@@ -57,7 +57,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
             rs.mset({f'eta_bar_{cav_id}_{timestep}_{k}':pickle.dumps(eta_bar)})
 
         if cav_id != 0:
-            read_redis_start = time.time()
+            # read_redis_start = time.time()
             while True:
                 if rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0] != None:
                     eta_bar_former = pickle.loads(rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0])
@@ -88,7 +88,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
             rs.mset({f'Eif_{cav_id}':pickle.dumps(Eif)})
 
         if cav_id != n_cav-1:
-            read_redis_start = time.time()
+            # read_redis_start = time.time()
             while True:
                 if rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0] != None:
                     epsilon_bar_latter = pickle.loads(rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0])
@@ -266,7 +266,7 @@ def StopCriteria(k,rs,n_cav,timestep):
     tolerence_dual4 = 0    
 
     for i in range(n_cav):
-        read_redis_start = time.time()
+        # read_redis_start = time.time()
         while True:
             if rs.mget(f'error_pri1_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_pri1_{i}_{timestep}_{k}')[0] != None \
             and rs.mget(f'error_dual1_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_dual1_{i}_{timestep}_{k}')[0] != None :
@@ -284,7 +284,7 @@ def StopCriteria(k,rs,n_cav,timestep):
         if i == n_cav-1:
             break
 
-        read_redis_start = time.time()
+        # read_redis_start = time.time()
         while True:
             if rs.mget(f'error_pri2_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_pri2_{i}_{timestep}_{k}')[0] != None \
             and rs.mget(f'error_dual2_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_dual2_{i}_{timestep}_{k}')[0] != None :
@@ -299,7 +299,7 @@ def StopCriteria(k,rs,n_cav,timestep):
         return False
     
     for i in range(n_cav):
-        read_redis_start = time.time()
+        # read_redis_start = time.time()
         while True:
             if rs.mget(f'error_pri3_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_pri3_{i}_{timestep}_{k}')[0] != None \
             and rs.mget(f'error_dual3_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_dual3_{i}_{timestep}_{k}')[0] != None :
@@ -315,7 +315,7 @@ def StopCriteria(k,rs,n_cav,timestep):
 
     
     for i in range(n_cav):
-        read_redis_start = time.time()
+        # read_redis_start = time.time()
         while True:
             if rs.mget(f'error_pri4_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_pri4_{i}_{timestep}_{k}')[0] != None \
             and rs.mget(f'error_dual4_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_dual4_{i}_{timestep}_{k}')[0] != None :
