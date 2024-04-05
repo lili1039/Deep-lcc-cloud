@@ -1,0 +1,52 @@
+# -*- coding: utf-8 -*-
+version: "3.0"
+services:
+  veh-0:
+    container_name: veh-0
+    image: chlcloud
+    ports:
+    - 3389:6000
+    volumes: 
+      - ../app:/app  
+      - ../docker:/docker
+    command: bash /docker/run0.sh
+
+  veh-1:
+    container_name: veh-1
+    image: chlcloud
+    ports:
+      - 3390:6000
+    volumes:
+      - ../app:/app
+      - ../docker:/docker
+    command: bash /docker/run1.sh
+
+  veh-2:
+    container_name: veh-2
+    image: chlcloud
+    ports:
+      - 3391:6000
+    volumes:
+      - ../app:/app
+      - ../docker:/docker
+    command: bash /docker/run2.sh
+
+  veh-3:
+    container_name: veh-3
+    image: chlcloud
+    ports:
+      - 3392:6000
+    volumes:
+      - ../app:/app
+      - ../docker:/docker
+    command: bash /docker/run3.sh
+
+  veh-4:
+    container_name: veh-4
+    image: chlcloud
+    ports:
+      - 3393:6000
+    volumes:
+      - ../app:/app
+      - ../docker:/docker
+    command: bash /docker/run4.sh
