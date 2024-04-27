@@ -427,8 +427,12 @@ class SubsystemSolver(SubsystemParam):
         use_time = time.time() - start_time
         y_prediction = self.Yif @ g_opt
 
+        Qi = pickle.loads(rs.mget(f'Qi_in_CAV_{self.cav_id}')[0])
+        Ri = pickle.loads(rs.mget(f'Ri_in_CAV_{self.cav_id}')[0])
+        cost = y_prediction.T@Qi@y_prediction + u_opt.T@Ri@u_opt
+
         # give input signal and iter_num to client
-        msg_send = [u_opt[0],real_iter_num,use_time,y_prediction[0:p]]
+        msg_send = [u_opt[0],real_iter_num,use_time,y_prediction[0:p],cost]
         msg_bytes_send = pickle.dumps(msg_send)
         try:
             await websocket.send(msg_bytes_send)

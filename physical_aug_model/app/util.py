@@ -5,13 +5,34 @@ import time
 import redis
 import math
 import websockets
+import pandas as pd
+# import pmdarima as pm
+# import statsmodels.api as sm
+
+# Generate a Hankel matrix of order L
+def Hankel_matrix(u,L):
+    m = u.ndim      # the dimension of signal
+    T = u.shape[0]      # the length of data
+    U = np.zeros([m*L,T-L+1])
+
+    for i in range(L):
+        U[i*m:(i+1)*m,:] = u[i:(T-L+1+i)]
+
+    return U
+
+def whetherPE(U):
+    rows,cols = U.shape
+    if np.linalg.matrix_rank(U) == rows:
+        return True
+    else:
+        return False
 
 def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,\
                     g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
                 lambda_yi,u_limit,s_limit,rho,KKT_vert,Hz_vert,rs):
     
     # stoping criterion
-    iteration_num = 300
+    iteration_num = 50
     error_absolute = 0.1
     error_relative = 1e-3
 
@@ -23,6 +44,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
     Tini = int(Uip.shape[0]/m)
     N = int(Uif.shape[0]/m)
     T = int(Uip.shape[1]+Tini+N-1)
+    kappa = int(Uip.shape[1])
 
     # parameters in ADMM
     K=np.kron(np.eye(N),np.append(np.zeros(p-2),[1,0]))
@@ -75,7 +97,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
             # 计算g+
         temp1 = np.hstack((-qg,beqg))
         temp2 = KKT_vert@temp1
-        g_plus = temp2[0:T-Tini-N+1]
+        g_plus = temp2[0:kappa]
         
 
         # Step2: parallel update z/s/u & mu/eta/phi/theta
@@ -384,6 +406,7 @@ class SubsystemSolver(SubsystemParam):
         self.eini            = msg_recv[3]
         self.yini            = msg_recv[4]
         curr_step            = msg_recv[5]
+        Hankel_update_flag   = msg_recv[6]
         print(f"Subsystem {self.cav_id}: Step {curr_step} data loaded",flush=True)
 
         # 从数据库获取初始参数和数据
@@ -407,9 +430,207 @@ class SubsystemSolver(SubsystemParam):
         n_cav_bytes = rs.mget('n_cav')[0]
         n_cav = pickle.loads(n_cav_bytes)
 
+        Su = pickle.loads(rs.mget(f'Su_in_CAV_{self.cav_id}')[0])
+        Se = pickle.loads(rs.mget(f'Se_in_CAV_{self.cav_id}')[0])
+        Sy = pickle.loads(rs.mget(f'Sy_in_CAV_{self.cav_id}')[0])
+
         # problem size
         m = self.uini.ndim         # the size of control input of each subsystem
         p = self.yini.shape[0]     # the size of output of each subsystem
+        # time horizon
+        Tini = int(self.Uip.shape[0]/m)
+        N = int(self.Uif.shape[0]/m)
+        Tstep = 0.05
+        max_col = 500
+
+        # update Hankel matrix
+        if Hankel_update_flag and curr_step>=N-1:
+            kappa = self.Uip.shape[1]
+            print('kappa = ',kappa)
+            
+            ds_num = pickle.loads(rs.mget(f'ds_num_in_CAV_{self.cav_id}')[0])
+            ds_flag = pickle.loads(rs.mget(f'ds_flag_in_CAV_{self.cav_id}')[0])
+            ds_timeflag = pickle.loads(rs.mget(f'ds_timeflag_in_CAV_{self.cav_id}')[0])
+
+            # PE的Hankel矩阵的阶数要达到(Tini+N+2*self.n_vehicle_sub)，为了能构建PE的Hankel，u的长度要至少>=阶数
+            L = Tini+N+2*self.n_vehicle_sub
+            if (kappa-ds_flag[ds_num][1])>=L:
+                # new_u = Su[0,0:curr_step+Tini+1]
+                new_u = Su[0,ds_timeflag[ds_num][1]:curr_step+Tini+1]
+                if whetherPE(Hankel_matrix(new_u,L)):
+                    # flag = 0
+                    # 上一个数据集满足持续激励后，开始下一个数据集
+                    ds_num = ds_num+1
+                    ds_flag.append([ds_flag[ds_num-1][1],kappa])
+                    ds_timeflag.append([ds_timeflag[ds_num-1][1],curr_step+Tini+1])
+                    rs.mset({f'ds_num_in_CAV_{self.cav_id}':pickle.dumps(ds_num)})
+                    rs.mset({f'ds_flag_in_CAV_{self.cav_id}':pickle.dumps(ds_flag)})
+                    rs.mset({f'ds_timeflag_in_CAV_{self.cav_id}':pickle.dumps(ds_timeflag)})
+                    print('Satisfy P.E.',flush=True)
+
+            if  kappa< max_col:
+                flag = 1
+            else:
+                # 如果列数已经到达最大容许列数，则减掉前一列，再加上新一列
+                # 同时需要修改ds_num ds_flag 和 ds_timeflag
+                for i in range(ds_num+1):
+                    ds_flag[i] = [j-1 for j in ds_flag[i]]
+                rs.mset({f'ds_flag_in_CAV_{self.cav_id}':pickle.dumps(ds_flag)})
+                flag = 0
+            
+            if flag:
+                print('Change Hankel matrix by adding a new column.', flush = True)
+                kappa = kappa + 1
+
+                new_up = np.zeros(Tini)
+                for j in range(Tini):
+                    new_up[j] = Su[0,curr_step-N+1+j]
+                Up_temp = np.hstack((self.Uip,new_up.reshape([int(Tini),1])))
+
+                new_uf = np.zeros(N)
+                for j in range(N):
+                    new_uf[j] = Su[0,curr_step-N+1+Tini+j]
+                Uf_temp = np.hstack((self.Uif,new_uf.reshape([int(N),1])))
+
+                new_yp = np.zeros(p*Tini)
+                for j in range(Tini):
+                    new_yp[j*p:(j+1)*p] = Sy[:,curr_step-N+1+j]
+                Yp_temp = np.hstack((self.Yip,new_yp.reshape([int(p*Tini),1])))
+
+                new_yf = np.zeros(p*N)
+                for j in range(N):
+                    new_yf[j*p:(j+1)*p] = Sy[:,curr_step-N+1+Tini+j]
+                Yf_temp = np.hstack((self.Yif,new_yf.reshape([int(p*N),1])))
+
+                new_ep = np.zeros(Tini)
+                for j in range(Tini):
+                    new_ep[j] = Se[0,curr_step-N+1+j]
+                Ep_temp = np.hstack((self.Eip,new_ep.reshape([int(Tini),1])))
+
+                new_ef = np.zeros(N)
+                for j in range(N):
+                    new_ef[j] = Se[0,curr_step-N+1+Tini+j]
+                Ef_temp = np.hstack((self.Eif,new_ef.reshape([int(N),1])))
+
+                # g_initial / mu_initial
+                # g_initial = np.hstack((g_initial[1:],0))
+                g_initial = np.hstack((g_initial,0))
+                mu_initial = np.hstack((mu_initial,0))
+
+            else:
+                print('Change Hankel matrix by delete one column and add a new one.', flush = True)
+
+                new_up = np.zeros(Tini)
+                for j in range(Tini):
+                    new_up[j] = Su[0,curr_step-N+1+j]
+                Up_temp = np.hstack((self.Uip[:,1:],new_up.reshape([int(Tini),1])))
+
+                new_uf = np.zeros(N)
+                for j in range(N):
+                    new_uf[j] = Su[0,curr_step-N+1+Tini+j]
+                Uf_temp = np.hstack((self.Uif[:,1:],new_uf.reshape([int(N),1])))
+
+                new_yp = np.zeros(p*Tini)
+                for j in range(Tini):
+                    new_yp[j*p:(j+1)*p] = Sy[:,curr_step-N+1+j]
+                Yp_temp = np.hstack((self.Yip[:,1:],new_yp.reshape([int(p*Tini),1])))
+
+                new_yf = np.zeros(p*N)
+                for j in range(N):
+                    new_yf[j*p:(j+1)*p] = Sy[:,curr_step-N+1+Tini+j]
+                Yf_temp = np.hstack((self.Yif[:,1:],new_yf.reshape([int(p*N),1])))
+
+                new_ep = np.zeros(Tini)
+                for j in range(Tini):
+                    new_ep[j] = Se[0,curr_step-N+1+j]
+                Ep_temp = np.hstack((self.Eip[:,1:],new_ep.reshape([int(Tini),1])))
+
+                new_ef = np.zeros(N)
+                for j in range(N):
+                    new_ef[j] = Se[0,curr_step-N+1+Tini+j]
+                Ef_temp = np.hstack((self.Eif[:,1:],new_ef.reshape([int(N),1])))
+
+                # g_initial / mu_initial
+                # g_initial = np.hstack((g_initial[1:],0))
+                g_initial = np.hstack((g_initial[1:],0))
+                mu_initial = np.hstack((mu_initial[1:],0))
+
+            self.Uip = Up_temp
+            rs.mset({f'Uip_in_CAV_{self.cav_id}':pickle.dumps(self.Uip)})
+            self.Uif = Uf_temp
+            rs.mset({f'Uif_in_CAV_{self.cav_id}':pickle.dumps(self.Uif)})
+            self.Yip = Yp_temp
+            rs.mset({f'Yip_in_CAV_{self.cav_id}':pickle.dumps(self.Yip)})
+            self.Yif = Yf_temp
+            rs.mset({f'Yif_in_CAV_{self.cav_id}':pickle.dumps(self.Yif)})
+            self.Eip = Ep_temp
+            rs.mset({f'Eip_in_CAV_{self.cav_id}':pickle.dumps(self.Eip)})
+            self.Eif = Ef_temp
+            rs.mset({f'Eif_in_CAV_{self.cav_id}':pickle.dumps(self.Eif)})
+            
+            rs.mset({f'g_initial_in_CAV_{self.cav_id}':pickle.dumps(g_initial)})
+            rs.mset({f'mu_initial_in_CAV_{self.cav_id}':pickle.dumps(mu_initial)})
+
+            # KKT_vert
+                # define physicis-augment elements here
+                # matrix for physics-augmented calculation
+            Bf = np.hstack((np.eye(N-1),np.zeros([N-1,1])))  # Bf is a N-1*N matrix, Bf*v=v[0:-1]
+            Af = np.hstack((np.zeros([N-1,1]),np.eye(N-1)))  # Af is a N-1*N matrix, Af*v=v[1:]
+            DM = Af - Bf                                     # Diff_matrix DM*v = v[1:] - v[0:-1]
+            K = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub-1)),[1,0]))
+            P = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub)),[1]))
+            F = np.kron(np.eye(N),np.append([1],np.zeros(int(self.n_vehicle_sub)))) 
+            Q_delta1 = DM@P@self.Yif - Tstep*Bf@(self.Eif-F@self.Yif)
+            Q_delta2 = DM@F@self.Yif - Tstep*Bf@self.Uif
+
+            weight_delta1   = 0.5*1e12
+            weight_delta2   = 0.5*1e12   # weight coefficient for physics laws
+            M1 = weight_delta1 * np.eye(N-1)
+            M2 = weight_delta2 * np.eye(N-1)
+
+            # cost coefficient
+            weight_v        = 1     # weight coefficient for velocity error
+            weight_s        = 0.5   # weight coefficient for spacing error   
+            weight_u        = 0.1   # weight coefficient for control input
+
+            Qi = np.diagflat(np.append(weight_v*np.ones(int(self.n_vehicle_sub)),[weight_s]))
+            Qi_stack = np.kron(np.eye(N),Qi)
+            Ri = weight_u
+            Ri_stack = np.kron(np.eye(N),Ri)
+                
+            if self.cav_id == 0: # the first subsystem has different Hgi
+                Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
+                    self.lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
+                    Q_delta2.T@M2@Q_delta2+\
+                    self.rho/2*(np.eye(kappa)+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
+                Aeqg = np.vstack((self.Uip,self.Eip,self.Eif))
+            else:
+                Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
+                    self.lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
+                    Q_delta1.T@M1@Q_delta1 + Q_delta2.T@M2@Q_delta2+\
+                    self.rho/2*(np.eye(kappa)+self.Eif.T@self.Eif+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
+                Aeqg = np.vstack((self.Uip,self.Eip))
+
+            Phi = np.vstack((np.hstack((Hg,Aeqg.T)),np.hstack((Aeqg,np.zeros([Aeqg.shape[0],Aeqg.shape[0]])))))
+            # try:
+            self.KKT_vert = np.linalg.inv(Phi)
+            rs.mset({f'KKT_vert_in_CAV_{self.cav_id}':pickle.dumps(self.KKT_vert)})
+            # except: # 如果不可逆，采用上次结果
+            #     print('Phi is singular.')
+            
+            # Hz_vert
+            if self.cav_id != n_cav-1:
+                Hz = self.rho/2*np.eye(kappa)+self.rho/2*self.Yif.T@K.T@K@self.Yif
+            else:
+                Hz = self.rho/2*np.eye(kappa)
+            
+            # try:
+            self.Hz_vert = np.linalg.inv(Hz)
+            rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(self.Hz_vert)})
+            # except:
+            #     print('Hz is singular.')
+
+
 
         u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
@@ -425,8 +646,12 @@ class SubsystemSolver(SubsystemParam):
         use_time = time.time() - start_time
         y_prediction = self.Yif @ g_opt
 
+        Qi = pickle.loads(rs.mget(f'Qi_in_CAV_{self.cav_id}')[0])
+        Ri = pickle.loads(rs.mget(f'Ri_in_CAV_{self.cav_id}')[0])
+        cost = y_prediction.T@Qi@y_prediction + u_opt.T@Ri@u_opt
+
         # give input signal and iter_num to client
-        msg_send = [u_opt[0],real_iter_num,use_time,y_prediction[0:p]]
+        msg_send = [u_opt[0],real_iter_num,use_time,y_prediction[0:p],cost]
         msg_bytes_send = pickle.dumps(msg_send)
         try:
             await websocket.send(msg_bytes_send)

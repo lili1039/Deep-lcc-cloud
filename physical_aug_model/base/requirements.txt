@@ -3,3 +3,6 @@ numpy
 redis
 websockets
 asyncio
+pandas
+pmdarima
+statsmodels
