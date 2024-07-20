@@ -5,9 +5,7 @@ import time
 import redis
 import math
 import websockets
-import pandas as pd
-# import pmdarima as pm
-# import statsmodels.api as sm
+
 
 # Generate a Hankel matrix of order L
 def Hankel_matrix(u,L):
@@ -32,7 +30,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
                 lambda_yi,u_limit,s_limit,rho,KKT_vert,Hz_vert,rs):
     
     # stoping criterion
-    iteration_num = 50
+    iteration_num = 300
     error_absolute = 0.1
     error_relative = 1e-3
 
@@ -440,42 +438,43 @@ class SubsystemSolver(SubsystemParam):
         # time horizon
         Tini = int(self.Uip.shape[0]/m)
         N = int(self.Uif.shape[0]/m)
-        Tstep = 0.05
-        max_col = 500
+        Tstep = pickle.loads(rs.mget(f'Tstep')[0])
+        max_col = 400
 
         # update Hankel matrix
-        if Hankel_update_flag and curr_step>=N-1:
+        if Hankel_update_flag and curr_step>=N:
             kappa = self.Uip.shape[1]
             print('kappa = ',kappa)
             
-            ds_num = pickle.loads(rs.mget(f'ds_num_in_CAV_{self.cav_id}')[0])
-            ds_flag = pickle.loads(rs.mget(f'ds_flag_in_CAV_{self.cav_id}')[0])
-            ds_timeflag = pickle.loads(rs.mget(f'ds_timeflag_in_CAV_{self.cav_id}')[0])
+            # ds_num = pickle.loads(rs.mget(f'ds_num_in_CAV_{self.cav_id}')[0])
+            # ds_flag = pickle.loads(rs.mget(f'ds_flag_in_CAV_{self.cav_id}')[0])
+            # ds_timeflag = pickle.loads(rs.mget(f'ds_timeflag_in_CAV_{self.cav_id}')[0])
 
             # PE的Hankel矩阵的阶数要达到(Tini+N+2*self.n_vehicle_sub)，为了能构建PE的Hankel，u的长度要至少>=阶数
-            L = Tini+N+2*self.n_vehicle_sub
-            if (kappa-ds_flag[ds_num][1])>=L:
-                # new_u = Su[0,0:curr_step+Tini+1]
-                new_u = Su[0,ds_timeflag[ds_num][1]:curr_step+Tini+1]
-                if whetherPE(Hankel_matrix(new_u,L)):
-                    # flag = 0
-                    # 上一个数据集满足持续激励后，开始下一个数据集
-                    ds_num = ds_num+1
-                    ds_flag.append([ds_flag[ds_num-1][1],kappa])
-                    ds_timeflag.append([ds_timeflag[ds_num-1][1],curr_step+Tini+1])
-                    rs.mset({f'ds_num_in_CAV_{self.cav_id}':pickle.dumps(ds_num)})
-                    rs.mset({f'ds_flag_in_CAV_{self.cav_id}':pickle.dumps(ds_flag)})
-                    rs.mset({f'ds_timeflag_in_CAV_{self.cav_id}':pickle.dumps(ds_timeflag)})
-                    print('Satisfy P.E.',flush=True)
+            # L = Tini+N+2*self.n_vehicle_sub
+            # if (kappa-ds_flag[ds_num][1])>=L:
+            #     # new_u = Su[0,0:curr_step+Tini+1]
+            #     new_u = Su[0,ds_timeflag[ds_num][1]:curr_step+Tini]
+            #     new_e = Se[0,ds_timeflag[ds_num][1]:curr_step+Tini]
+            #     if whetherPE(Hankel_matrix(new_u,L)) and whetherPE(Hankel_matrix(new_e,L)):
+            #         # flag = 0
+            #         # 上一个数据集满足持续激励后，开始下一个数据集
+            #         ds_num = ds_num+1
+            #         ds_flag.append([ds_flag[ds_num-1][1],kappa])
+            #         ds_timeflag.append([ds_timeflag[ds_num-1][1],curr_step+Tini])
+            #         rs.mset({f'ds_num_in_CAV_{self.cav_id}':pickle.dumps(ds_num)})
+            #         rs.mset({f'ds_flag_in_CAV_{self.cav_id}':pickle.dumps(ds_flag)})
+            #         rs.mset({f'ds_timeflag_in_CAV_{self.cav_id}':pickle.dumps(ds_timeflag)})
+            #         print('Satisfy P.E.',flush=True)
 
             if  kappa< max_col:
                 flag = 1
             else:
                 # 如果列数已经到达最大容许列数，则减掉前一列，再加上新一列
-                # 同时需要修改ds_num ds_flag 和 ds_timeflag
-                for i in range(ds_num+1):
-                    ds_flag[i] = [j-1 for j in ds_flag[i]]
-                rs.mset({f'ds_flag_in_CAV_{self.cav_id}':pickle.dumps(ds_flag)})
+                # 同时需要修改ds_flag
+                # for i in range(ds_num+1):
+                #     ds_flag[i] = [j-1 for j in ds_flag[i]]
+                # rs.mset({f'ds_flag_in_CAV_{self.cav_id}':pickle.dumps(ds_flag)})
                 flag = 0
             
             if flag:
@@ -484,76 +483,83 @@ class SubsystemSolver(SubsystemParam):
 
                 new_up = np.zeros(Tini)
                 for j in range(Tini):
-                    new_up[j] = Su[0,curr_step-N+1+j]
+                    new_up[j] = Su[0,curr_step-N+j]
                 Up_temp = np.hstack((self.Uip,new_up.reshape([int(Tini),1])))
 
                 new_uf = np.zeros(N)
                 for j in range(N):
-                    new_uf[j] = Su[0,curr_step-N+1+Tini+j]
+                    new_uf[j] = Su[0,curr_step-N+Tini+j]
                 Uf_temp = np.hstack((self.Uif,new_uf.reshape([int(N),1])))
 
                 new_yp = np.zeros(p*Tini)
                 for j in range(Tini):
-                    new_yp[j*p:(j+1)*p] = Sy[:,curr_step-N+1+j]
+                    new_yp[j*p:(j+1)*p] = Sy[:,curr_step-N+j]
                 Yp_temp = np.hstack((self.Yip,new_yp.reshape([int(p*Tini),1])))
 
                 new_yf = np.zeros(p*N)
                 for j in range(N):
-                    new_yf[j*p:(j+1)*p] = Sy[:,curr_step-N+1+Tini+j]
+                    new_yf[j*p:(j+1)*p] = Sy[:,curr_step-N+Tini+j]
                 Yf_temp = np.hstack((self.Yif,new_yf.reshape([int(p*N),1])))
 
                 new_ep = np.zeros(Tini)
                 for j in range(Tini):
-                    new_ep[j] = Se[0,curr_step-N+1+j]
+                    new_ep[j] = Se[0,curr_step-N+j]
                 Ep_temp = np.hstack((self.Eip,new_ep.reshape([int(Tini),1])))
 
                 new_ef = np.zeros(N)
                 for j in range(N):
-                    new_ef[j] = Se[0,curr_step-N+1+Tini+j]
+                    new_ef[j] = Se[0,curr_step-N+Tini+j]
                 Ef_temp = np.hstack((self.Eif,new_ef.reshape([int(N),1])))
 
                 # g_initial / mu_initial
-                # g_initial = np.hstack((g_initial[1:],0))
                 g_initial = np.hstack((g_initial,0))
                 mu_initial = np.hstack((mu_initial,0))
 
             else:
                 print('Change Hankel matrix by delete one column and add a new one.', flush = True)
 
+                ds0_end = 231
                 new_up = np.zeros(Tini)
                 for j in range(Tini):
-                    new_up[j] = Su[0,curr_step-N+1+j]
-                Up_temp = np.hstack((self.Uip[:,1:],new_up.reshape([int(Tini),1])))
+                    new_up[j] = Su[0,curr_step-N+j]
+                # Up_temp = np.hstack((self.Uip[:,1:],new_up.reshape([int(Tini),1])))
+                Up_temp = np.hstack((self.Uip[:,0:231],self.Uip[:,232:],new_up.reshape([int(Tini),1])))
 
                 new_uf = np.zeros(N)
                 for j in range(N):
-                    new_uf[j] = Su[0,curr_step-N+1+Tini+j]
-                Uf_temp = np.hstack((self.Uif[:,1:],new_uf.reshape([int(N),1])))
+                    new_uf[j] = Su[0,curr_step-N+Tini+j]
+                # Uf_temp = np.hstack((self.Uif[:,1:],new_uf.reshape([int(N),1])))
+                Uf_temp = np.hstack((self.Uif[:,0:231],self.Uif[:,232:],new_uf.reshape([int(N),1])))
 
                 new_yp = np.zeros(p*Tini)
                 for j in range(Tini):
-                    new_yp[j*p:(j+1)*p] = Sy[:,curr_step-N+1+j]
-                Yp_temp = np.hstack((self.Yip[:,1:],new_yp.reshape([int(p*Tini),1])))
+                    new_yp[j*p:(j+1)*p] = Sy[:,curr_step-N+j]
+                # Yp_temp = np.hstack((self.Yip[:,1:],new_yp.reshape([int(p*Tini),1])))
+                Yp_temp = np.hstack((self.Yip[:,0:231],self.Yip[:,232:],new_yp.reshape([int(p*Tini),1])))
 
                 new_yf = np.zeros(p*N)
                 for j in range(N):
-                    new_yf[j*p:(j+1)*p] = Sy[:,curr_step-N+1+Tini+j]
-                Yf_temp = np.hstack((self.Yif[:,1:],new_yf.reshape([int(p*N),1])))
+                    new_yf[j*p:(j+1)*p] = Sy[:,curr_step-N+Tini+j]
+                # Yf_temp = np.hstack((self.Yif[:,1:],new_yf.reshape([int(p*N),1])))
+                Yf_temp = np.hstack((self.Yif[:,0:231],self.Yif[:,232:],new_yf.reshape([int(p*N),1])))
 
                 new_ep = np.zeros(Tini)
                 for j in range(Tini):
-                    new_ep[j] = Se[0,curr_step-N+1+j]
-                Ep_temp = np.hstack((self.Eip[:,1:],new_ep.reshape([int(Tini),1])))
+                    new_ep[j] = Se[0,curr_step-N+j]
+                # Ep_temp = np.hstack((self.Eip[:,1:],new_ep.reshape([int(Tini),1])))
+                Ep_temp = np.hstack((self.Eip[:,0:231],self.Eip[:,232:],new_ep.reshape([int(Tini),1])))
 
                 new_ef = np.zeros(N)
                 for j in range(N):
-                    new_ef[j] = Se[0,curr_step-N+1+Tini+j]
-                Ef_temp = np.hstack((self.Eif[:,1:],new_ef.reshape([int(N),1])))
+                    new_ef[j] = Se[0,curr_step-N+Tini+j]
+                # Ef_temp = np.hstack((self.Eif[:,1:],new_ef.reshape([int(N),1])))
+                Ef_temp = np.hstack((self.Eif[:,0:231],self.Eif[:,232:],new_ef.reshape([int(N),1])))
 
                 # g_initial / mu_initial
                 # g_initial = np.hstack((g_initial[1:],0))
-                g_initial = np.hstack((g_initial[1:],0))
-                mu_initial = np.hstack((mu_initial[1:],0))
+                g_initial = np.hstack((g_initial[0:231],g_initial[232:],0))
+                # mu_initial = np.hstack((mu_initial[1:],0))
+                mu_initial = np.hstack((mu_initial[0:231],mu_initial[232:],0))
 
             self.Uip = Up_temp
             rs.mset({f'Uip_in_CAV_{self.cav_id}':pickle.dumps(self.Uip)})
@@ -583,8 +589,9 @@ class SubsystemSolver(SubsystemParam):
             Q_delta1 = DM@P@self.Yif - Tstep*Bf@(self.Eif-F@self.Yif)
             Q_delta2 = DM@F@self.Yif - Tstep*Bf@self.Uif
 
-            weight_delta1   = 0.5*1e12
-            weight_delta2   = 0.5*1e12   # weight coefficient for physics laws
+            weight_delta1   = pickle.loads(rs.mget(f'weight_delta1')[0])
+            weight_delta2   = pickle.loads(rs.mget(f'weight_delta2')[0])   # weight coefficient for physics laws
+
             M1 = weight_delta1 * np.eye(N-1)
             M2 = weight_delta2 * np.eye(N-1)
 
@@ -601,22 +608,20 @@ class SubsystemSolver(SubsystemParam):
             if self.cav_id == 0: # the first subsystem has different Hgi
                 Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
                     self.lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
-                    Q_delta2.T@M2@Q_delta2+\
-                    self.rho/2*(np.eye(kappa)+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
+                    self.rho/2*(np.eye(kappa)+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)\
+                    +Q_delta2.T@M2@Q_delta2
+                print(Hg.max(),flush=True)
                 Aeqg = np.vstack((self.Uip,self.Eip,self.Eif))
             else:
                 Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
                     self.lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
-                    Q_delta1.T@M1@Q_delta1 + Q_delta2.T@M2@Q_delta2+\
-                    self.rho/2*(np.eye(kappa)+self.Eif.T@self.Eif+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
+                    self.rho/2*(np.eye(kappa)+self.Eif.T@self.Eif+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)+\
+                    Q_delta1.T@M1@Q_delta1 + Q_delta2.T@M2@Q_delta2
                 Aeqg = np.vstack((self.Uip,self.Eip))
 
             Phi = np.vstack((np.hstack((Hg,Aeqg.T)),np.hstack((Aeqg,np.zeros([Aeqg.shape[0],Aeqg.shape[0]])))))
-            # try:
             self.KKT_vert = np.linalg.inv(Phi)
             rs.mset({f'KKT_vert_in_CAV_{self.cav_id}':pickle.dumps(self.KKT_vert)})
-            # except: # 如果不可逆，采用上次结果
-            #     print('Phi is singular.')
             
             # Hz_vert
             if self.cav_id != n_cav-1:
@@ -624,12 +629,8 @@ class SubsystemSolver(SubsystemParam):
             else:
                 Hz = self.rho/2*np.eye(kappa)
             
-            # try:
             self.Hz_vert = np.linalg.inv(Hz)
             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(self.Hz_vert)})
-            # except:
-            #     print('Hz is singular.')
-
 
 
         u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
