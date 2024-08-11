@@ -580,20 +580,20 @@ class SubsystemSolver(SubsystemParam):
             # KKT_vert
                 # define physicis-augment elements here
                 # matrix for physics-augmented calculation
-            Bf = np.hstack((np.eye(N-1),np.zeros([N-1,1])))  # Bf is a N-1*N matrix, Bf*v=v[0:-1]
-            Af = np.hstack((np.zeros([N-1,1]),np.eye(N-1)))  # Af is a N-1*N matrix, Af*v=v[1:]
-            DM = Af - Bf                                     # Diff_matrix DM*v = v[1:] - v[0:-1]
-            K = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub-1)),[1,0]))
-            P = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub)),[1]))
-            F = np.kron(np.eye(N),np.append([1],np.zeros(int(self.n_vehicle_sub)))) 
-            Q_delta1 = DM@P@self.Yif - Tstep*Bf@(self.Eif-F@self.Yif)
-            Q_delta2 = DM@F@self.Yif - Tstep*Bf@self.Uif
+            # Bf = np.hstack((np.eye(N-1),np.zeros([N-1,1])))  # Bf is a N-1*N matrix, Bf*v=v[0:-1]
+            # Af = np.hstack((np.zeros([N-1,1]),np.eye(N-1)))  # Af is a N-1*N matrix, Af*v=v[1:]
+            # DM = Af - Bf                                     # Diff_matrix DM*v = v[1:] - v[0:-1]
+            # K = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub-1)),[1,0]))
+            # P = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub)),[1]))
+            # F = np.kron(np.eye(N),np.append([1],np.zeros(int(self.n_vehicle_sub)))) 
+            # Q_delta1 = DM@P@self.Yif - Tstep*Bf@(self.Eif-F@self.Yif)
+            # Q_delta2 = DM@F@self.Yif - Tstep*Bf@self.Uif
 
-            weight_delta1   = pickle.loads(rs.mget(f'weight_delta1')[0])
-            weight_delta2   = pickle.loads(rs.mget(f'weight_delta2')[0])   # weight coefficient for physics laws
+            # weight_delta1   = pickle.loads(rs.mget(f'weight_delta1')[0])
+            # weight_delta2   = pickle.loads(rs.mget(f'weight_delta2')[0])   # weight coefficient for physics laws
 
-            M1 = weight_delta1 * np.eye(N-1)
-            M2 = weight_delta2 * np.eye(N-1)
+            # M1 = weight_delta1 * np.eye(N-1)
+            # M2 = weight_delta2 * np.eye(N-1)
 
             # cost coefficient
             weight_v        = 1     # weight coefficient for velocity error
