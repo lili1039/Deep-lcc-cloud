@@ -77,7 +77,6 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
             rs.mset({f'eta_bar_{cav_id}_{timestep}_{k}':pickle.dumps(eta_bar)})
 
         if cav_id != 0:
-            # read_redis_start = time.time()
             while True:
                 if rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0] != None:
                     eta_bar_former = pickle.loads(rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0])
@@ -105,10 +104,8 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
         if cav_id != 0:
             epsilon_bar = Eif@g_plus
             rs.mset({f'epsilon_bar_{cav_id}_{timestep}_{k}':pickle.dumps(epsilon_bar)})
-            rs.mset({f'Eif_{cav_id}':pickle.dumps(Eif)})
 
         if cav_id != n_cav-1:
-            # read_redis_start = time.time()
             while True:
                 if rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0] != None:
                     epsilon_bar_latter = pickle.loads(rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0])
@@ -286,7 +283,6 @@ def StopCriteria(k,rs,n_cav,timestep):
     tolerence_dual4 = 0    
 
     for i in range(n_cav):
-        # read_redis_start = time.time()
         while True:
             if rs.mget(f'error_pri1_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_pri1_{i}_{timestep}_{k}')[0] != None \
             and rs.mget(f'error_dual1_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_dual1_{i}_{timestep}_{k}')[0] != None :
@@ -303,8 +299,6 @@ def StopCriteria(k,rs,n_cav,timestep):
     for i in range(n_cav):
         if i == n_cav-1:
             break
-
-        # read_redis_start = time.time()
         while True:
             if rs.mget(f'error_pri2_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_pri2_{i}_{timestep}_{k}')[0] != None \
             and rs.mget(f'error_dual2_{i}_{timestep}_{k}')[0] != None and rs.mget(f'tolerence_dual2_{i}_{timestep}_{k}')[0] != None :
@@ -632,7 +626,6 @@ class SubsystemSolver(SubsystemParam):
             self.Hz_vert = np.linalg.inv(Hz)
             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(self.Hz_vert)})
 
-
         u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
             self.lambda_yi,self.u_limit,self.s_limit,self.rho,self.KKT_vert,self.Hz_vert,rs)
@@ -651,10 +644,10 @@ class SubsystemSolver(SubsystemParam):
         Ri = pickle.loads(rs.mget(f'Ri_in_CAV_{self.cav_id}')[0])
         cost = y_prediction.T@Qi@y_prediction + u_opt.T@Ri@u_opt
 
-        # give input signal and iter_num to client
+        # give messages to clients
         msg_send = [u_opt[0],real_iter_num,use_time,y_prediction[0:p],cost]
         msg_bytes_send = pickle.dumps(msg_send)
         try:
             await websocket.send(msg_bytes_send)
         except websockets.ConnectionClosedOK:
-            print('Connection closed by the client',flush = True)
+            print('Connection closed by the client',flush = True)\
