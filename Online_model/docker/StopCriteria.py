@@ -154,9 +154,13 @@ import pickle
 
 
 
-async def fetch_error_tolerance(rs, i, timestep, k):
+async def fetch_error_tolerance(rs, i, timestep, k, finished_cav):
     while True:
-        error_tolerance_bytes = rs.mget(f'error_tolerance_{i}_{timestep}_{k}')[0]
+        if i in finished_cav:
+            error_tolerance_bytes = rs.mget(f'error_tolerance_{i}_{timestep}_{k}')[0]
+        else:
+            error_tolerance_bytes = rs.mget(f'error_tolerance_{i}_{timestep}_{k-1}')[0]
+        
         if error_tolerance_bytes is not None:
             return pickle.loads(error_tolerance_bytes)
         await asyncio.sleep(0)  # 让出执行权，避免阻塞
@@ -179,8 +183,8 @@ async def check_criteria(n_cav, error_tolerances, idx):
             return False
     return True
 
-async def StopCriteria(k, rs, n_cav, timestep):
-    tasks = [fetch_error_tolerance(rs, i, timestep, k) for i in range(n_cav)]
+async def StopCriteria(k, rs, n_cav, timestep, finished_cav):
+    tasks = [fetch_error_tolerance(rs, i, timestep, k, finished_cav) for i in range(n_cav)]
     error_tolerances = await asyncio.gather(*tasks)
 
     criteria_tasks = [

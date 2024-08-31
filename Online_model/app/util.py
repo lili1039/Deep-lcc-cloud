@@ -2,6 +2,7 @@ import asyncio
 import numpy as np
 import pickle
 import time
+import os
 import redis
 import math
 import websockets
@@ -84,7 +85,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
     rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,0])})
 
     # stoping criterion
-    iteration_num = 300
+    iteration_num = 30
     error_absolute = 0.1
     error_relative = 1e-3
 
@@ -125,7 +126,6 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
         # Step1: update g
             # updata eta_bar
             # 对于i=1~n-1的CAV计算eta_bar并发送给后一个CAVi+1
-        start_time_1 = time.time()
         if cav_id != n_cav-1:
             eta_bar = eta - rho*K@Yif@z
             rs.mset({f'eta_bar_{cav_id}_{timestep}_{k}':pickle.dumps(eta_bar)})
@@ -149,16 +149,12 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
         temp1 = np.hstack((-qg,beqg))
         temp2 = KKT_vert@temp1
         g_plus = temp2[0:kappa]
-        
-        # if cav_id == 2:
-        #     print(f'step 1 use time:{time.time()-start_time_1}',flush=True)
 
         # Step2: parallel update z/s/u & mu/eta/phi/theta
             # update epsilon_bar
             # 对于i=2~n的CAV更新epsilon_bar后发送给CAVi-1
             # 对于i=2~n的CAV，同时发送Eif给CAVi-1，便于后面计算error_dual2和tolerance_dual2
         
-        start_time_2 = time.time()
         if cav_id != 0:
             epsilon_bar = Eif@g_plus
             rs.mset({f'epsilon_bar_{cav_id}_{timestep}_{k}':pickle.dumps(epsilon_bar)})
@@ -246,9 +242,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
 
 
         # Step3: error计算完毕，可以由main-server检查stop criteria是否满足
-        # error和tolerance计算完成后，将check_ready标为1，表示该容器已经上传好信息，等待迭代停止检验结果
-        rs.mset({f'{cav_id}_check_ready':pickle.dumps([1,timestep,k])})
-
+        # error和tolerance计算完成后，将check_ready标为1，表示该容器已经上传好信息，等待停止迭代信号
         g = g_plus
         z = z_plus
         u = u_plus
@@ -257,19 +251,40 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
         phi = phi_plus
         theta = theta_plus
 
-        # 等待该时间步(timestep)本次迭代(k)的停止指令
+        # 检查check_stop信号是否产生
+        Check_flag_bytes = rs.mget(f'Check_Stop_{timestep}_{k}')[0]
+        # 已经产生
+        if Check_flag_bytes != None:
+            Check_flag = pickle.loads(Check_flag_bytes)
+            if Check_flag == 0: # 继续迭代
+                rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
+                continue
+            elif Check_flag == 1: # 停止迭代
+                rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
+                break
+        
+        # check_stop信号未产生，标记check_ready
+        rs.mset({f'{cav_id}_check_ready':pickle.dumps([1,timestep,k])})
+
+        start1=time.time()
         while True:
-            Check_flag_bytes = rs.mget(f'Check_Stop')[0]
+            duration = time.time()-start1
+            if duration > 10:
+                print("trap",flush=True)
+                os.system("pause")
+
+            Check_flag_bytes = rs.mget(f'Check_Stop_{timestep}_{k}')[0]
             if Check_flag_bytes == None:
                 continue
             else:
                 Check_flag = pickle.loads(Check_flag_bytes)
-                if Check_flag[1]==timestep and Check_flag[2]==k:
-                    break
-
-        if Check_flag[0] == 1:
+                break
+        
+        rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
+        if Check_flag == 1:
             break
-  
+        elif Check_flag == 0:
+            continue
     
     # Record optimal value
     real_iter_num = k+1
@@ -325,7 +340,6 @@ class SubsystemSolver(SubsystemParam):
         rs.mset({f'Subsystem{self.cav_id}_connect':pickle.dumps(1)})
 
         # 从websocket获取初始参数和数据
-        # start_time_1 = time.time()
         msg_bytes_recv  = await websocket.recv()
         msg_recv        = pickle.loads(msg_bytes_recv)
         msg_send = True
@@ -377,11 +391,9 @@ class SubsystemSolver(SubsystemParam):
         m = self.uini.ndim         # the size of control input of each subsystem
         p = self.yini.shape[0]     # the size of output of each subsystem
 
-        # start_time_2 = time.time()
         u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
             self.lambda_yi,self.u_limit,self.s_limit,self.rho,self.KKT_vert,self.Hz_vert,rs)
-        # print(f"deepc use time: {time.time()-start_time_2}",flush=True)
 
         # save initial value of dual variables for next timestep
         rs.mset({
