@@ -36,7 +36,7 @@ if __name__ =="__main__":
             for i in range(n_cav):
                 if rs.mget(f'{i}_check_ready')[0] == None:
                     continue
-                elif pickle.loads(rs.mget(f'{i}_check_ready')[0])[0] == 1 and ~(pickle.loads(rs.mget(f'{i}_check_ready')[0])[1] == timestep_copy and pickle.loads(rs.mget(f'{finished_cav[0]}_check_ready')[0])[2] == k_copy):
+                elif pickle.loads(rs.mget(f'{i}_check_ready')[0])[0] == 1 and (pickle.loads(rs.mget(f'{i}_check_ready')[0])[1] > timestep_copy or (pickle.loads(rs.mget(f'{i}_check_ready')[0])[1] == timestep_copy and pickle.loads(rs.mget(f'{i}_check_ready')[0])[2] > k_copy)):
                     finished_cav.append(i)
             
             complete_number = len(finished_cav)
