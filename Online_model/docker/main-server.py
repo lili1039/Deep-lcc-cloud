@@ -22,44 +22,81 @@ if __name__ =="__main__":
     rs.mset({f'ID':pickle.dumps(ID)})
     rs.mset({f'n_cav':pickle.dumps(n_cav)})
 
+    iteration_num = 30
+
     # 当返回误差容差计算结果的容器数占总容器的 %时，启动迭代停止检验
-    check_rate = 0.6
-    timestep_copy = -1
-    k_copy = -1
+    # check_rate = 0.6
+    # timestep_copy = -1
+    # k_copy = -1
+
+    # while True:
+    #     # 检验是否所有容器都计算好了error和tolerance 
+    #     while True:
+    #         complete_number = 0
+    #         finished_cav = []
+            
+    #         for i in range(n_cav):
+    #             if rs.mget(f'{i}_check_ready')[0] == None:
+    #                 continue
+    #             elif pickle.loads(rs.mget(f'{i}_check_ready')[0])[0] == 1 and (pickle.loads(rs.mget(f'{i}_check_ready')[0])[1] > timestep_copy or (pickle.loads(rs.mget(f'{i}_check_ready')[0])[1] == timestep_copy and pickle.loads(rs.mget(f'{i}_check_ready')[0])[2] > k_copy)):
+    #                 finished_cav.append(i)
+            
+    #         complete_number = len(finished_cav)
+
+    #         if complete_number == 0:
+    #             continue
+    #         else:
+    #             timestep = pickle.loads(rs.mget(f'{finished_cav[0]}_check_ready')[0])[1]
+    #             k = pickle.loads(rs.mget(f'{finished_cav[0]}_check_ready')[0])[2]
+
+    #             if k == 0 and complete_number == n_cav: # 第一次迭代 没有上一次迭代结果可取用 并且都获得了结果
+    #                 break
+    #             elif k == 0 and complete_number != n_cav: # 第一次迭代 没有上一次迭代结果可取用
+    #                 continue
+    #             elif k != 0: # 并非第一次迭代 则未拿到结果的容器用上一次迭代结果计算
+    #                 if complete_number >= int(n_cav*check_rate):
+    #                     break
+        
+    #     # 运行StopCriteria函数
+    #     if asyncio.run(StopCriteria(k,rs,n_cav,timestep,finished_cav)):
+    #         rs.mset({f'Check_Stop_{timestep}_{k}':pickle.dumps(1)})
+    #     else:
+    #         rs.mset({f'Check_Stop_{timestep}_{k}':pickle.dumps(0)})
+
+    #     timestep_copy = timestep
+    #     k_copy = k
+
+
+    # 各自检查
+    timestep_copy = 0
+    k_copy = 0
 
     while True:
-        # 检验是否所有容器都计算好了error和tolerance 
+        # 检验容器上传的rollout_flag_{cav_id}_{timestep_copy}_{k_copy}是否有0项
         while True:
-            complete_number = 0
-            finished_cav = []
-            
+            keys = []
+            flag_values = []
             for i in range(n_cav):
-                if rs.mget(f'{i}_check_ready')[0] == None:
-                    continue
-                elif pickle.loads(rs.mget(f'{i}_check_ready')[0])[0] == 1 and (pickle.loads(rs.mget(f'{i}_check_ready')[0])[1] > timestep_copy or (pickle.loads(rs.mget(f'{i}_check_ready')[0])[1] == timestep_copy and pickle.loads(rs.mget(f'{i}_check_ready')[0])[2] > k_copy)):
-                    finished_cav.append(i)
+                keys.append(f'rollout_flag_{i}_{timestep_copy}_{k_copy}')
             
-            complete_number = len(finished_cav)
+            flag_values_bytes = rs.mget(keys)
 
-            if complete_number == 0:
-                continue
-            else:
-                timestep = pickle.loads(rs.mget(f'{finished_cav[0]}_check_ready')[0])[1]
-                k = pickle.loads(rs.mget(f'{finished_cav[0]}_check_ready')[0])[2]
+            for value in flag_values_bytes:
+                if value != None:
+                    flag_values.append(pickle.loads(value))
 
-                if k == 0 and complete_number == n_cav: # 第一次迭代 没有上一次迭代结果可取用 并且都获得了结果
-                    break
-                elif k == 0 and complete_number != n_cav: # 第一次迭代 没有上一次迭代结果可取用
-                    continue
-                elif k != 0: # 并非第一次迭代 则未拿到结果的容器用上一次迭代结果计算
-                    if complete_number >= int(n_cav*check_rate):
-                        break
-        
-        # 运行StopCriteria函数
-        if asyncio.run(StopCriteria(k,rs,n_cav,timestep,finished_cav)):
-            rs.mset({f'Check_Stop_{timestep}_{k}':pickle.dumps(1)})
-        else:
-            rs.mset({f'Check_Stop_{timestep}_{k}':pickle.dumps(0)})
-
-        timestep_copy = timestep
-        k_copy = k
+            if 0 in flag_values and k_copy < iteration_num - 1:
+                rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(0)})
+                k_copy = k_copy+1
+                break
+            elif k_copy == iteration_num - 1:
+                print(f"Optimization quits in time step {timestep_copy+1} after maximum iterations.",flush=True)
+                k_copy = 0
+                timestep_copy = timestep_copy + 1
+                break
+            elif all(var == 1 for var in flag_values) and len(flag_values)==n_cav:
+                rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(1)})
+                print(f"Optimization quits in time step {timestep_copy+1} after {k_copy+1} iterations.",flush=True)
+                k_copy = 0
+                timestep_copy = timestep_copy + 1
+                break

@@ -7,35 +7,36 @@ import redis
 import math
 import websockets
 
+# update method
+Hankel_update_method = 1
+# 1: with base dataset 2: without base dataset
 
-# Generate a Hankel matrix of order L
-def Hankel_matrix(u,L):
-    m = u.ndim      # the dimension of signal
-    T = u.shape[0]      # the length of data
-    U = np.zeros([m*L,T-L+1])
+# # Generate a Hankel matrix of order L
+# def Hankel_matrix(u,L):
+#     m = u.ndim      # the dimension of signal
+#     T = u.shape[0]      # the length of data
+#     U = np.zeros([m*L,T-L+1])
 
-    for i in range(L):
-        U[i*m:(i+1)*m,:] = u[i:(T-L+1+i)]
+#     for i in range(L):
+#         U[i*m:(i+1)*m,:] = u[i:(T-L+1+i)]
 
-    return U
+#     return U
 
-def whetherPE(U):
-    rows,cols = U.shape
-    if np.linalg.matrix_rank(U) == rows:
-        return True
-    else:
-        return False
+# def whetherPE(U):
+#     rows,cols = U.shape
+#     if np.linalg.matrix_rank(U) == rows:
+#         return True
+#     else:
+#         return False
 
-def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,\
-                    g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
-                lambda_yi,u_limit,s_limit,rho,KKT_vert,Hz_vert,rs):
+def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,lambda_yi,u_limit,s_limit,rho,KKT_vert,Hz_vert,rs):
 
-    rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,0])})
+    # rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,0])})
 
     # stoping criterion
     iteration_num = 30
     error_absolute = 0.1
-    error_relative = 1e-3
+    error_relative = 1e-3 # 1e-3
 
     # problem size
     m = ui_ini.ndim         # the size of control input of each subsystem
@@ -44,8 +45,6 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
     # time horizon
     Tini = int(Uip.shape[0]/m)
     N = int(Uif.shape[0]/m)
-    T = int(Uip.shape[1]+Tini+N-1)
-    kappa = int(Uip.shape[1])
 
     # parameters in ADMM
     K=np.kron(np.eye(N),np.append(np.zeros(p-2),[1,0]))
@@ -71,7 +70,7 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
     u=Uif@g         #一维数组
 
     for k in range(iteration_num):
-        time_step12_start = time.time()
+        # time_step12_start = time.time()
         # Step1: update g
             # updata eta_bar
             # 对于i=1~n-1的CAV计算eta_bar并发送给后一个CAVi+1
@@ -85,8 +84,8 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
                     eta_bar_former = pickle.loads(rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0])
                     break
 
-        time_eta = time.time()
-        print("wait eta: ",time_eta-time_step12_start)
+        # time_eta = time.time()
+        # print("wait eta: ",time_eta-time_step12_start)
 
             # 计算qg
         if cav_id == 0:
@@ -102,9 +101,8 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
         temp2 = KKT_vert@temp1
         g_plus = temp2[0:kappa]
 
-        time_gplus = time.time()
-        print("cal qg: ",time_gplus-time_eta)
-
+        # time_gplus = time.time()
+        # print("cal qg: ",time_gplus-time_eta)
 
         # Step2: parallel update z/s/u & mu/eta/phi/theta
             # update epsilon_bar
@@ -121,8 +119,8 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
                     epsilon_bar_latter = pickle.loads(rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0])
                     break
 
-        time_epsilon = time.time()
-        print("cal qg: ",time_epsilon-time_gplus)
+        # time_epsilon = time.time()
+        # print("cal qg: ",time_epsilon-time_gplus)
         
             # update
         if cav_id != n_cav-1:
@@ -163,9 +161,12 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
             error_dual4 = rho*np.linalg.norm(Uif.T@(u_plus-u))
             tolerance_dual4 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
             
-            print("cal error cal-part:",time.time()-time_epsilon)
-            
-            rs.mset({f'error_tolerance_{cav_id}_{timestep}_{k}':pickle.dumps([[error_pri1,tolerance_pri1,error_dual1,tolerance_dual1],[error_pri2,tolerance_pri2,error_dual2,tolerance_dual2],[error_pri3,tolerance_pri3,error_dual3,tolerance_dual3],[error_pri4,tolerance_pri4,error_dual4,tolerance_dual4]])})  
+            # rs.mset({f'error_tolerance_{cav_id}_{timestep}_{k}':pickle.dumps([[error_pri1,tolerance_pri1,error_dual1,tolerance_dual1],[error_pri2,tolerance_pri2,error_dual2,tolerance_dual2],[error_pri3,tolerance_pri3,error_dual3,tolerance_dual3],[error_pri4,tolerance_pri4,error_dual4,tolerance_dual4]])})  
+
+            if error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri2 <= tolerance_pri2 and error_dual2 <= tolerance_dual2 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
+            else:
+                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
 
             eta = eta_plus
 
@@ -198,13 +199,17 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
             error_dual4 = rho*np.linalg.norm(Uif.T@(u_plus-u))
             tolerance_dual4 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
 
-            print("cal error cal-part:",time.time()-time_epsilon)
+            # print("cal error cal-part:",time.time()-time_epsilon)
+            # rs.mset({f'error_tolerance_{cav_id}_{timestep}_{k}':pickle.dumps([[error_pri1,tolerance_pri1,error_dual1,tolerance_dual1],[],[error_pri3,tolerance_pri3,error_dual3,tolerance_dual3],[error_pri4,tolerance_pri4,error_dual4,tolerance_dual4]])})  
 
-            rs.mset({f'error_tolerance_{cav_id}_{timestep}_{k}':pickle.dumps([[error_pri1,tolerance_pri1,error_dual1,tolerance_dual1],[],[error_pri3,tolerance_pri3,error_dual3,tolerance_dual3],[error_pri4,tolerance_pri4,error_dual4,tolerance_dual4]])})  
+            if error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
+            else:
+                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
 
-        time_error = time.time()
-        print("cal error ",time_error-time_epsilon)
-        print("Time of step1 and step2: ",time.time()-time_step12_start)
+        # time_error = time.time()
+        # print("cal error ",time_error-time_epsilon)
+        # print("Time of step1 and step2: ",time.time()-time_step12_start)
 
         # Step3: error计算完毕，可以由main-server检查stop criteria是否满足
         # error和tolerance计算完成后，将check_ready标为1，表示该容器已经上传好信息，等待停止迭代信号
@@ -216,40 +221,97 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
         phi = phi_plus
         theta = theta_plus
 
-        # 检查check_stop信号是否产生
-        Check_flag_bytes = rs.mget(f'Check_Stop_{timestep}_{k}')[0]
-        # 已经产生
-        if Check_flag_bytes != None:
-            Check_flag = pickle.loads(Check_flag_bytes)
-            if Check_flag == 0: # 继续迭代
-                rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
-                continue
-            elif Check_flag == 1: # 停止迭代
-                rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
-                break
-        
-        # check_stop信号未产生，标记check_ready
-        rs.mset({f'{cav_id}_check_ready':pickle.dumps([1,timestep,k])})
-
-        start_time = time.time()
-        while True:
-            duration = time.time()-start_time
-            if duration > 10:
-                print("trap",flush=True)
-                input("Press Enter to continue...")
-
-            Check_flag_bytes = rs.mget(f'Check_Stop_{timestep}_{k}')[0]
-            if Check_flag_bytes == None:
-                continue
-            else:
-                Check_flag = pickle.loads(Check_flag_bytes)
-                break
-        
-        rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
-        if Check_flag == 1:
+        if k == iteration_num-1:
             break
-        elif Check_flag == 0:
-            continue
+        else:
+            while True:
+                check_flag_bytes=rs.mget(f'rollout_flag_total_{timestep}_{k}')[0]
+                if check_flag_bytes==None:
+                        continue
+                else:
+                    check_flag = pickle.loads(check_flag_bytes)
+                    break
+
+            if check_flag == 0:
+                continue
+            elif check_flag==1:
+                break        
+
+        # 查询其他所有容器的check_stop信号
+        # for i in range(n_cav):
+        #     while True:
+        #         check_flag_bytes=rs.mget(f'rollout_flag_{i}_{timestep}_{k}')[0]
+        #         if check_flag_bytes==None:
+        #             continue
+        #         else:
+        #             check_flag = pickle.loads(check_flag_bytes)
+        #             break
+
+        #     if check_flag == 0: # 还不能退出迭代 有一个不能退出迭代就都不能退出迭代
+        #         break
+        #     elif check_flag == 1: # 可以退出迭代
+        #         continue
+
+        # if check_flag == 0:
+        #     continue
+        # elif check_flag==1:
+        #     break
+
+        # # 检查check_stop信号是否产生
+        # start_time = time.time()
+        # while True:
+        #     duration = time.time()-start_time
+        #     if duration > 10:
+        #         print("trap",flush=True)
+        #         input("Press Enter to continue...")
+
+        #     Check_flag_bytes = rs.mget(f'Check_Stop_{timestep}_{k}')[0]
+        #     if Check_flag_bytes == None:
+        #         continue
+        #     else:
+        #         Check_flag = pickle.loads(Check_flag_bytes)
+        #         break
+
+        # # 已经产生
+        # if Check_flag == 0: # 继续迭代
+        #     continue
+        # elif Check_flag == 1: # 停止迭代
+        #     break
+
+        # # 由云端主服务器进行残差的加和，再生成check_stop信号
+        # Check_flag_bytes = rs.mget(f'Check_Stop_{timestep}_{k}')[0]
+        # # 已经产生
+        # if Check_flag_bytes != None:
+        #     Check_flag = pickle.loads(Check_flag_bytes)
+        #     if Check_flag == 0: # 继续迭代
+        #         rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
+        #         continue
+        #     elif Check_flag == 1: # 停止迭代
+        #         rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
+        #         break
+        
+        # # check_stop信号未产生，标记check_ready
+        # rs.mset({f'{cav_id}_check_ready':pickle.dumps([1,timestep,k])})
+
+        # start_time = time.time()
+        # while True:
+        #     duration = time.time()-start_time
+        #     if duration > 10:
+        #         print("trap",flush=True)
+        #         input("Press Enter to continue...")
+
+        #     Check_flag_bytes = rs.mget(f'Check_Stop_{timestep}_{k}')[0]
+        #     if Check_flag_bytes == None:
+        #         continue
+        #     else:
+        #         Check_flag = pickle.loads(Check_flag_bytes)
+        #         break
+        
+        # rs.mset({f'{cav_id}_check_ready':pickle.dumps([0,timestep,k])})
+        # if Check_flag == 1:
+        #     break
+        # elif Check_flag == 0:
+        #     continue
         
 
     # Record optimal value
@@ -263,97 +325,86 @@ def dDeeP_LCC(timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini
     
     return u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num
 
-def Hankel_add_new_col(Tini,N,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initial,mu_initial):
-    print('Change Hankel matrix by adding a new column.', flush = True)
+def Hankel_substitute_col_1(Tini,N,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initial,mu_initial):
+    # print('Change Hankel matrix by delete the first one column and add a new one in the end.', flush = True)
 
     new_up = np.zeros(Tini)
     for j in range(Tini):
         new_up[j] = Su[0,k-N+j]
-    Up_temp = np.hstack((Uip,new_up.reshape([int(Tini),1])))
+    Up_temp = np.hstack((Uip[:,1:],new_up.reshape([int(Tini),1])))
 
     new_uf = np.zeros(N)
     for j in range(N):
         new_uf[j] = Su[0,k-N+Tini+j]
-    Uf_temp = np.hstack((Uif,new_uf.reshape([int(N),1])))
+    Uf_temp = np.hstack((Uif[:,1:],new_uf.reshape([int(N),1])))
 
     new_yp = np.zeros(p*Tini)
     for j in range(Tini):
         new_yp[j*p:(j+1)*p] = Sy[:,k-N+j]
-    Yp_temp = np.hstack((Yip,new_yp.reshape([int(p*Tini),1])))
+    Yp_temp = np.hstack((Yip[:,1:],new_yp.reshape([int(p*Tini),1])))
 
     new_yf = np.zeros(p*N)
     for j in range(N):
         new_yf[j*p:(j+1)*p] = Sy[:,k-N+Tini+j]
-    Yf_temp = np.hstack((Yif,new_yf.reshape([int(p*N),1])))
+    Yf_temp = np.hstack((Yif[:,1:],new_yf.reshape([int(p*N),1])))
 
     new_ep = np.zeros(Tini)
     for j in range(Tini):
         new_ep[j] = Se[0,k-N+j]
-    Ep_temp = np.hstack((Eip,new_ep.reshape([int(Tini),1])))
+    Ep_temp = np.hstack((Eip[:,1:],new_ep.reshape([int(Tini),1])))
 
     new_ef = np.zeros(N)
     for j in range(N):
         new_ef[j] = Se[0,k-N+Tini+j]
-    Ef_temp = np.hstack((Eif,new_ef.reshape([int(N),1])))
+    Ef_temp = np.hstack((Eif[:,1:],new_ef.reshape([int(N),1])))
 
-    # g_initial / mu_initial
-    g_initial = np.hstack((g_initial,0))
-    mu_initial = np.hstack((mu_initial,0))
-    
+    g_initial = np.hstack((g_initial[1:],0))
+    mu_initial = np.hstack((mu_initial[1:],0))
+
     return [Up_temp,Uf_temp,Yp_temp,Yf_temp,Ep_temp,Ef_temp,g_initial,mu_initial]
 
-def Hankel_substitute_col(Hankel_col,Tini,N,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initial,mu_initial):
-    print('Change Hankel matrix by delete one column and add a new one.', flush = True)
+def Hankel_substitute_col_2(Tini,N,k_on,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initial,mu_initial):
+    # print('Change Hankel matrix by delete the first column of online part and add a new one in the end.', flush = True)
+    # k_on is the index of the beginning of Online part, and also the minimal number of column that ensure offline data satisfying P.E. condition.
 
-    base_dataset_col = Hankel_col
     new_up = np.zeros(Tini)
     for j in range(Tini):
         new_up[j] = Su[0,k-N+j]
-    # Up_temp = np.hstack((self.Uip[:,1:],new_up.reshape([int(Tini),1])))
-    Up_temp = np.hstack((Uip[:,0:base_dataset_col],Uip[:,base_dataset_col+1:],new_up.reshape([int(Tini),1])))
+    Up_temp = np.hstack((Uip[:,0:k_on],Uip[:,k_on+1:],new_up.reshape([int(Tini),1])))
 
     new_uf = np.zeros(N)
     for j in range(N):
         new_uf[j] = Su[0,k-N+Tini+j]
-    # Uf_temp = np.hstack((self.Uif[:,1:],new_uf.reshape([int(N),1])))
-    Uf_temp = np.hstack((Uif[:,0:base_dataset_col],Uif[:,base_dataset_col+1:],new_uf.reshape([int(N),1])))
+    Uf_temp = np.hstack((Uif[:,0:k_on],Uif[:,k_on+1:],new_uf.reshape([int(N),1])))
 
     new_yp = np.zeros(p*Tini)
     for j in range(Tini):
         new_yp[j*p:(j+1)*p] = Sy[:,k-N+j]
-    # Yp_temp = np.hstack((self.Yip[:,1:],new_yp.reshape([int(p*Tini),1])))
-    Yp_temp = np.hstack((Yip[:,0:base_dataset_col],Yip[:,base_dataset_col+1:],new_yp.reshape([int(p*Tini),1])))
+    Yp_temp = np.hstack((Yip[:,0:k_on],Yip[:,k_on+1:],new_yp.reshape([int(p*Tini),1])))
 
     new_yf = np.zeros(p*N)
     for j in range(N):
         new_yf[j*p:(j+1)*p] = Sy[:,k-N+Tini+j]
-    # Yf_temp = np.hstack((self.Yif[:,1:],new_yf.reshape([int(p*N),1])))
-    Yf_temp = np.hstack((Yif[:,0:base_dataset_col],Yif[:,base_dataset_col+1:],new_yf.reshape([int(p*N),1])))
+    Yf_temp = np.hstack((Yif[:,0:k_on],Yif[:,k_on+1:],new_yf.reshape([int(p*N),1])))
 
     new_ep = np.zeros(Tini)
     for j in range(Tini):
         new_ep[j] = Se[0,k-N+j]
-    # Ep_temp = np.hstack((self.Eip[:,1:],new_ep.reshape([int(Tini),1])))
-    Ep_temp = np.hstack((Eip[:,0:base_dataset_col],Eip[:,base_dataset_col+1:],new_ep.reshape([int(Tini),1])))
+    Ep_temp = np.hstack((Eip[:,0:k_on],Eip[:,k_on+1:],new_ep.reshape([int(Tini),1])))
 
     new_ef = np.zeros(N)
     for j in range(N):
         new_ef[j] = Se[0,k-N+Tini+j]
-    # Ef_temp = np.hstack((self.Eif[:,1:],new_ef.reshape([int(N),1])))
-    Ef_temp = np.hstack((Eif[:,0:base_dataset_col],Eif[:,base_dataset_col+1:],new_ef.reshape([int(N),1])))
+    Ef_temp = np.hstack((Eif[:,0:k_on],Eif[:,k_on+1:],new_ef.reshape([int(N),1])))
 
-    # g_initial / mu_initial
-    # g_initial = np.hstack((g_initial[1:],0))
-    g_initial = np.hstack((g_initial[0:base_dataset_col],g_initial[base_dataset_col+1:],0))
-    # mu_initial = np.hstack((mu_initial[1:],0))
-    mu_initial = np.hstack((mu_initial[0:base_dataset_col],mu_initial[base_dataset_col+1:],0))
+    g_initial = np.hstack((g_initial[0:k_on],g_initial[k_on+1:],0))
+    mu_initial = np.hstack((mu_initial[0:k_on],mu_initial[k_on+1:],0))
 
     return [Up_temp,Uf_temp,Yp_temp,Yf_temp,Ep_temp,Ef_temp,g_initial,mu_initial]
-
 
 class SubsystemParam:
     def __init__(self):
-        # 系统车辆参数
+        # 系统车辆参数s
         self.cav_id = 0
         self.n_vehicle_sub   = 0
         self.Uip             = []
@@ -404,7 +455,7 @@ class SubsystemSolver(SubsystemParam):
         self.yini            = msg_recv[4]
         curr_step            = msg_recv[5]
         Hankel_update_flag   = msg_recv[6]
-        print(f"Subsystem {self.cav_id}: Step {curr_step} data loaded",flush=True)
+        print(f"Subsystem {self.cav_id}: Step {curr_step+1} data loaded",flush=True)
         rs.mset({f'Curr_step':pickle.dumps(curr_step)})
 
         # 从数据库获取初始参数和数据
@@ -428,6 +479,7 @@ class SubsystemSolver(SubsystemParam):
             f'Sy_in_CAV_{self.cav_id}',
             f'Se_in_CAV_{self.cav_id}',
             'n_cav',
+            'k_on'
         ]
 
         # 一次性获取所有键值
@@ -438,7 +490,7 @@ class SubsystemSolver(SubsystemParam):
             self.Uip, self.Uif, self.Eip, self.Eif, self.Yip, self.Yif,
             self.rho, self.lambda_yi, self.KKT_vert, 
             self.Hz_vert, g_initial, mu_initial, eta_initial, phi_initial, theta_initial, 
-            Su, Sy, Se, n_cav
+            Su, Sy, Se, n_cav, k_on
         ) = [pickle.loads(value) for value in values]
 
         # problem size
@@ -447,18 +499,19 @@ class SubsystemSolver(SubsystemParam):
         # time horizon
         Tini = int(self.Uip.shape[0]/m)
         N = int(self.Uif.shape[0]/m)
-        Hankel_col = 231
-        max_col = 400
-
+        kappa = int(self.Uip.shape[1])
+        
         if Hankel_update_flag and curr_step >= N:
-            kappa = self.Uip.shape[1]
-            print('kappa = ',kappa)
-            if  kappa < max_col:
-                kappa = kappa + 1
-                result = Hankel_add_new_col(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
-            else:
-                # 如果列数已经到达最大容许列数，则减掉前一列，再加上新一列
-                result = Hankel_substitute_col(Hankel_col,Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
+            if Hankel_update_method == 1 :
+                off_col = kappa - (curr_step - N + 1)
+                if  off_col > k_on[self.cav_id]:
+                    result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
+                else: 
+                    print("begin Hankel_substitute_col_2")
+                    result = Hankel_substitute_col_2(Tini,N,int(k_on[self.cav_id]),Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)  
+                    print("finish.")            
+            elif Hankel_update_method == 2:
+                result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
 
             [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial] = result
             rs.mset({
@@ -470,10 +523,18 @@ class SubsystemSolver(SubsystemParam):
                 f'Yif_in_CAV_{self.cav_id}': pickle.dumps(self.Yif)
             })
 
+            while True:
+                if self.KKT_vert[1] == curr_step and self.Hz_vert[1] == curr_step:
+                    break
+                else:
+                    self.KKT_vert = pickle.loads(rs.mget(f'KKT_vert_in_CAV_{self.cav_id}')[0])
+                    self.Hz_vert = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
+
+
         # 调用deepc
-        u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
+        u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
-            self.lambda_yi,self.u_limit,self.s_limit,self.rho,self.KKT_vert,self.Hz_vert,rs)
+            self.lambda_yi,self.u_limit,self.s_limit,self.rho,self.KKT_vert[0],self.Hz_vert[0],rs)
 
         # save initial value of dual variables for next timestep
         rs.mset({
