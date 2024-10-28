@@ -422,7 +422,7 @@ class SubsystemParam:
         self.lambda_yi       = 0
 
         # 安全限制
-        self.acel_max = 2       # max accelaration
+        self.acel_max = 4       # max accelaration
         self.dcel_max = -5      # min accelaration
         self.spacing_max = 40
         self.spacing_min = 5
@@ -501,15 +501,15 @@ class SubsystemSolver(SubsystemParam):
         N = int(self.Uif.shape[0]/m)
         kappa = int(self.Uip.shape[1])
         
-        if Hankel_update_flag and curr_step >= N:
+        if Hankel_update_flag and curr_step >= N+Tini:
             if Hankel_update_method == 1 :
                 off_col = kappa - (curr_step - N + 1)
                 if  off_col > k_on[self.cav_id]:
                     result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
                 else: 
-                    print("begin Hankel_substitute_col_2")
+                    # print("begin Hankel_substitute_col_2",flush=True)
                     result = Hankel_substitute_col_2(Tini,N,int(k_on[self.cav_id]),Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)  
-                    print("finish.")            
+                    # print("finish.",flush=True)            
             elif Hankel_update_method == 2:
                 result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
 
