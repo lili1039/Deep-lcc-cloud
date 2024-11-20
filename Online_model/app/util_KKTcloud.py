@@ -12,18 +12,16 @@ import websockets
 Hankel_update_method = 1
 # 1: with base dataset 2: without base dataset
 
-iteration_num = 30
-
-def matrix_cal(kappa,cav_id,n_cav,Yif,Qi_stack,Uif,Ri_stack,Yip,P,Uip,Eip,Eif,K,Lambda_gi,lambda_yi,rho,C,M):
+def matrix_cal(kappa,cav_id,n_cav,Yif,Qi_stack,Uif,Ri_stack,Yip,P,Uip,Eip,Eif,K,Lambda_gi,lambda_yi,rho,k):
     # KKT_vert
     if cav_id == 0: # the first subsystem has different Hgi
         Hg = Yif.T@Qi_stack@Yif+Uif.T@Ri_stack@Uif+\
-            Lambda_gi+lambda_yi*Yip.T@Yip+Uif.T@C.T@M@C@Uif+\
+            Lambda_gi+lambda_yi*Yip.T@Yip+\
             rho/2*(np.eye(int(kappa))+Yif.T@P.T@P@Yif+Uif.T@Uif)
         Aeqg = np.vstack((Uip,Eip,Eif))
     else:
         Hg = Yif.T@Qi_stack@Yif+Uif.T@Ri_stack@Uif+\
-            Lambda_gi+lambda_yi*Yip.T@Yip+Uif.T@C.T@M@C@Uif+\
+            Lambda_gi+lambda_yi*Yip.T@Yip+\
             rho/2*(np.eye(int(kappa))+Eif.T@Eif+Yif.T@P.T@P@Yif+Uif.T@Uif)
         Aeqg = np.vstack((Uip,Eip))
 
@@ -46,11 +44,12 @@ def matrix_cal(kappa,cav_id,n_cav,Yif,Qi_stack,Uif,Ri_stack,Yip,P,Uip,Eip,Eif,K,
     print(f"Hz inv consumes:{time.time()-time_Hz_begin}",flush=True)  
     return KKT_vert,Hz_vert
 
-def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,lambda_yi,u_limit,s_limit,rho,KKT_vert,Hz_vert,M,C,u0,rs):
+def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,lambda_yi,u_limit,s_limit,rho,KKT_vert,Hz_vert,rs):
 
     # stoping criterion
+    iteration_num = 30
     error_absolute = 0.1
-    error_relative = 1e-2 # 1e-3
+    error_relative = 1e-3 # 1e-3
 
     # problem size
     m = ui_ini.ndim         # the size of control input of each subsystem
@@ -101,10 +100,10 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
         # 计算qg
         if cav_id == 0:
             # qg 的结果是一维数组
-            qg = -lambda_yi*Yip.T@yi_ini + (2*np.hstack((u0,np.zeros(N-1)))@M.T@C@Uif) + mu/2 - rho*z/2 - \
+            qg = -lambda_yi*Yip.T@yi_ini + mu/2 - rho*z/2 - \
                 Yif.T@P.T@phi/2 - Uif.T@theta/2 - rho*Yif.T@P.T@s/2 - rho*Uif.T@u/2
         else:
-            qg = -lambda_yi*Yip.T@yi_ini + (2*np.hstack((u0,np.zeros(N-1)))@M.T@C@Uif) + mu/2 - rho*z/2 + Eif.T@eta_bar_former/2 - \
+            qg = -lambda_yi*Yip.T@yi_ini + mu/2 - rho*z/2 + Eif.T@eta_bar_former/2 - \
                 Yif.T@P.T@phi/2 - Uif.T@theta/2 - rho*Yif.T@P.T@s/2 - rho*Uif.T@u/2
 
         # 计算g+
@@ -146,25 +145,25 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
 
             # 计算迭代停止条件并存入数据库
             error_pri1 = np.linalg.norm(g_plus - z_plus)
-            tolerance_pri1 = math.sqrt(kappa)*error_absolute + \
+            tolerance_pri1 = math.sqrt(g_plus.shape[0])*error_absolute + \
                 error_relative*max(np.linalg.norm(g_plus),np.linalg.norm(z_plus))
             error_dual1 = rho*np.linalg.norm(z_plus-z)
-            tolerance_dual1 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(mu_plus)
+            tolerance_dual1 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(mu_plus)
 
             error_pri2 = np.linalg.norm(epsilon_bar_latter - K@Yif@z_plus)
-            tolerance_pri2 = math.sqrt(N)*error_absolute + \
+            tolerance_pri2 = math.sqrt((epsilon_bar_latter).shape[0])*error_absolute + \
                 error_relative*max(np.linalg.norm(epsilon_bar_latter),np.linalg.norm(K@Yif@z_plus))
             Eif_latter = pickle.loads(rs.mget(f'Eif_in_CAV_{cav_id+1}')[0])
             error_dual2 = rho*np.linalg.norm(Eif_latter.T@K@Yif@(z_plus-z))    
-            tolerance_dual2 = math.sqrt(N)*error_absolute + error_relative*np.linalg.norm(Eif_latter.T@eta_plus)  
+            tolerance_dual2 = math.sqrt((Eif_latter.T@K@Yif@(z_plus-z)).shape[0])*error_absolute + error_relative*np.linalg.norm(Eif_latter.T@eta_plus)  
             error_pri3 = np.linalg.norm(s_plus - P@Yif@g_plus)
             tolerance_pri3 = math.sqrt(s_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P@Yif@g_plus))
             error_dual3 = rho*np.linalg.norm(Yif.T@P.T@(s_plus-s))
-            tolerance_dual3 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Yif.T@P.T@phi_plus)
+            tolerance_dual3 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Yif.T@P.T@phi_plus)
             error_pri4 =  np.linalg.norm(u_plus-Uif@g_plus)
-            tolerance_pri4 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
+            tolerance_pri4 = math.sqrt(u_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
             error_dual4 = rho*np.linalg.norm(Uif.T@(u_plus-u))
-            tolerance_dual4 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
+            tolerance_dual4 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
 
             if error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri2 <= tolerance_pri2 and error_dual2 <= tolerance_dual2 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
                 rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
@@ -247,32 +246,32 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
 def Hankel_substitute_col_1(Tini,N,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initial,mu_initial):
     new_up = np.zeros(Tini)
     for j in range(Tini):
-        new_up[j] = Su[0,k+j]
+        new_up[j] = Su[0,k-N+j]
     Up_temp = np.hstack((Uip[:,1:],new_up.reshape([int(Tini),1])))
 
     new_uf = np.zeros(N)
     for j in range(N):
-        new_uf[j] = Su[0,k+Tini+j]
+        new_uf[j] = Su[0,k-N+Tini+j]
     Uf_temp = np.hstack((Uif[:,1:],new_uf.reshape([int(N),1])))
 
     new_yp = np.zeros(p*Tini)
     for j in range(Tini):
-        new_yp[j*p:(j+1)*p] = Sy[:,k+j]
+        new_yp[j*p:(j+1)*p] = Sy[:,k-N+j]
     Yp_temp = np.hstack((Yip[:,1:],new_yp.reshape([int(p*Tini),1])))
 
     new_yf = np.zeros(p*N)
     for j in range(N):
-        new_yf[j*p:(j+1)*p] = Sy[:,k+Tini+j]
+        new_yf[j*p:(j+1)*p] = Sy[:,k-N+Tini+j]
     Yf_temp = np.hstack((Yif[:,1:],new_yf.reshape([int(p*N),1])))
 
     new_ep = np.zeros(Tini)
     for j in range(Tini):
-        new_ep[j] = Se[0,k+j]
+        new_ep[j] = Se[0,k-N+j]
     Ep_temp = np.hstack((Eip[:,1:],new_ep.reshape([int(Tini),1])))
 
     new_ef = np.zeros(N)
     for j in range(N):
-        new_ef[j] = Se[0,k+Tini+j]
+        new_ef[j] = Se[0,k-N+Tini+j]
     Ef_temp = np.hstack((Eif[:,1:],new_ef.reshape([int(N),1])))
 
     g_initial = np.hstack((g_initial[1:],0))
@@ -285,32 +284,32 @@ def Hankel_substitute_col_2(Tini,N,k_on,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_i
 
     new_up = np.zeros(Tini)
     for j in range(Tini):
-        new_up[j] = Su[0,k+j]
+        new_up[j] = Su[0,k-N+j]
     Up_temp = np.hstack((Uip[:,0:k_on],Uip[:,k_on+1:],new_up.reshape([int(Tini),1])))
 
     new_uf = np.zeros(N)
     for j in range(N):
-        new_uf[j] = Su[0,k+Tini+j]
+        new_uf[j] = Su[0,k-N+Tini+j]
     Uf_temp = np.hstack((Uif[:,0:k_on],Uif[:,k_on+1:],new_uf.reshape([int(N),1])))
 
     new_yp = np.zeros(p*Tini)
     for j in range(Tini):
-        new_yp[j*p:(j+1)*p] = Sy[:,k+j]
+        new_yp[j*p:(j+1)*p] = Sy[:,k-N+j]
     Yp_temp = np.hstack((Yip[:,0:k_on],Yip[:,k_on+1:],new_yp.reshape([int(p*Tini),1])))
 
     new_yf = np.zeros(p*N)
     for j in range(N):
-        new_yf[j*p:(j+1)*p] = Sy[:,k+Tini+j]
+        new_yf[j*p:(j+1)*p] = Sy[:,k-N+Tini+j]
     Yf_temp = np.hstack((Yif[:,0:k_on],Yif[:,k_on+1:],new_yf.reshape([int(p*N),1])))
 
     new_ep = np.zeros(Tini)
     for j in range(Tini):
-        new_ep[j] = Se[0,k+j]
+        new_ep[j] = Se[0,k-N+j]
     Ep_temp = np.hstack((Eip[:,0:k_on],Eip[:,k_on+1:],new_ep.reshape([int(Tini),1])))
 
     new_ef = np.zeros(N)
     for j in range(N):
-        new_ef[j] = Se[0,k+Tini+j]
+        new_ef[j] = Se[0,k-N+Tini+j]
     Ef_temp = np.hstack((Eif[:,0:k_on],Eif[:,k_on+1:],new_ef.reshape([int(N),1])))
 
     g_initial = np.hstack((g_initial[0:k_on],g_initial[k_on+1:],0))
@@ -338,21 +337,20 @@ class SubsystemParam:
         self.lambda_yi       = 0
 
         # 安全限制
-        self.acel_max = 0       # max accelaration
-        self.dcel_max = 0      # min accelaration
-        self.spacing_max = 0
-        self.spacing_min = 0
-        self.s_star = 0
-        self.u_limit = []
-        self.s_limit = []
-        self.u_limit = []
-        self.s_limit = []       
+        self.acel_max = 4       # max accelaration
+        self.dcel_max = -5      # min accelaration
+        self.spacing_max = 40
+        self.spacing_min = 5
+        self.s_star = 20
+        self.u_limit = np.array([self.dcel_max,self.acel_max])
+        self.s_limit = np.array([self.spacing_min-self.s_star,self.spacing_max-self.s_star])       
 
 class SubsystemSolver(SubsystemParam):
     def __init__(self):
         super().__init__()
 
     async def solver(self,websocket, path):
+        start_time = time.time()
         # 数据库连接
         rs = redis.StrictRedis(host='172.18.0.1',port=6379,db=2,password="chlpw1039") 
         # 数据库标志该子系统已连接
@@ -373,8 +371,8 @@ class SubsystemSolver(SubsystemParam):
         curr_step            = msg_recv[5]
         Hankel_update_flag   = msg_recv[6]
         print(f"Subsystem {self.cav_id}: Step {curr_step+1} data loaded",flush=True)
+        # rs.mset({f'Curr_step':pickle.dumps(curr_step)})
 
-        start_time = time.time()
         # 从数据库获取初始参数和数据
         keys = [
             f'Uip_in_CAV_{self.cav_id}',
@@ -383,10 +381,10 @@ class SubsystemSolver(SubsystemParam):
             f'Eif_in_CAV_{self.cav_id}',
             f'Yip_in_CAV_{self.cav_id}',
             f'Yif_in_CAV_{self.cav_id}',
-            f'lambda_yi',
-            f'lambda_g_max',
-            f'Lambda_gi_on',
-            f'rho',
+            f'rho_in_CAV_{self.cav_id}',
+            f'lambda_yi_in_CAV_{self.cav_id}',
+            f'KKT_vert_in_CAV_{self.cav_id}',
+            f'Hz_vert_in_CAV_{self.cav_id}',
             f'g_initial_in_CAV_{self.cav_id}',
             f'mu_initial_in_CAV_{self.cav_id}',
             f'eta_initial_in_CAV_{self.cav_id}',
@@ -395,20 +393,8 @@ class SubsystemSolver(SubsystemParam):
             f'Su_in_CAV_{self.cav_id}',
             f'Sy_in_CAV_{self.cav_id}',
             f'Se_in_CAV_{self.cav_id}',
-            f'n_cav',
-            f'k_on',
-            f'Qi_in_CAV_{self.cav_id}',
-            f'Ri_in_CAV_{self.cav_id}',
-            f'K_in_CAV_{self.cav_id}',
-            f'P_in_CAV_{self.cav_id}',
-            f'M_in_CAV_{self.cav_id}',
-            f'Matrix_C',
-            f'acel_max',
-            f'dcel_max',
-            f's_max',
-            f's_st',
-            f's_star',
-            f'Tstep'
+            'n_cav',
+            'k_on'
         ]
 
         # 一次性获取所有键值
@@ -417,15 +403,10 @@ class SubsystemSolver(SubsystemParam):
         # 使用循环简化赋值操作
         (
             self.Uip, self.Uif, self.Eip, self.Eif, self.Yip, self.Yif,
-            self.lambda_yi, lambda_g_max, Lambda_gi_on, self.rho,
-            g_initial, mu_initial, eta_initial, phi_initial, theta_initial, 
-            Su, Sy, Se, 
-            n_cav, k_on, Qi_stack, Ri_stack, K, P, M, C,
-            self.acel_max, self.dcel_max, self.spacing_max, self.spacing_min, self.s_star, Tstep
+            self.rho, self.lambda_yi, self.KKT_vert, 
+            self.Hz_vert, g_initial, mu_initial, eta_initial, phi_initial, theta_initial, 
+            Su, Sy, Se, n_cav, k_on
         ) = [pickle.loads(value) for value in values]
-
-        self.u_limit = np.array([self.dcel_max,self.acel_max])
-        self.s_limit = np.array([self.spacing_min-self.s_star,self.spacing_max-self.s_star])  
 
         # problem size
         m = self.uini.ndim         # the size of control input of each subsystem
@@ -435,9 +416,32 @@ class SubsystemSolver(SubsystemParam):
         N = int(self.Uif.shape[0]/m)
         kappa = int(self.Uip.shape[1])
 
-        if Hankel_update_flag:
+        # parameters
+        lambda_g_min    = 10    # penalty on g in objective
+        lambda_g_max    = 30
+        Lambda_gi_on = np.linspace(lambda_g_max,lambda_g_min,kappa)/n_cav
+        
+        # cost coefficient
+        weight_v        = 1     # weight coefficient for velocity error
+        weight_s        = 0.5   # weight coefficient for spacing error   
+        weight_u        = 0.1   # weight coefficient for control input
+
+        # parameter
+        lambda_y        = 1e4   # penalty on ||sigma_y||_2^2 in objective
+        rho             = 1     # penality parameter in ADMM
+        lambda_yi = lambda_y
+        
+        # 控制矩阵的初始化
+        K = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub-1)),[1,0]))
+        P = np.kron(np.eye(N),np.append(np.zeros(int(self.n_vehicle_sub)),[1]))
+        Qi = np.diagflat(np.append(weight_v*np.ones(int(self.n_vehicle_sub)),[weight_s]))
+        Qi_stack = np.kron(np.eye(N),Qi)
+        Ri = weight_u
+        Ri_stack = np.kron(np.eye(N),Ri)
+
+        if Hankel_update_flag and curr_step >= N+Tini:
             if Hankel_update_method == 1 :
-                off_col = kappa - (curr_step + 1)
+                off_col = kappa - (curr_step - (N+Tini) + 1)
                 if  off_col > k_on[self.cav_id]:
                     result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
                     Lambda_gi = np.diag(np.hstack((lambda_g_max/n_cav*np.ones(int(off_col)),Lambda_gi_on[:int(kappa-off_col)])))
@@ -457,38 +461,50 @@ class SubsystemSolver(SubsystemParam):
                 f'Eif_in_CAV_{self.cav_id}': pickle.dumps(self.Eif),
                 f'Yip_in_CAV_{self.cav_id}': pickle.dumps(self.Yip),
                 f'Yif_in_CAV_{self.cav_id}': pickle.dumps(self.Yif),
+                f'Lambda_gi_in_CAV_{self.cav_id}': pickle.dumps(Lambda_gi)
             })       
             print(f'kappa={kappa}',flush=True)
+            # KKT_vert,Hz_vert = matrix_cal(kappa,self.cav_id,n_cav,self.Yif,Qi_stack,self.Uif,Ri_stack,self.Yip,P,self.Uip,self.Eip,self.Eif,K,Lambda_gi,lambda_yi,rho,curr_step)
             
+            start_matrix_cal = time.time()
             if self.cav_id == 0: # the first subsystem has different Hgi
                 Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
-                    Lambda_gi+self.lambda_yi*self.Yip.T@self.Yip+(self.Uif.T@C.T@M@C@self.Uif)+\
-                    self.rho/2*(np.eye(int(kappa))+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
+                    Lambda_gi+lambda_yi*self.Yip.T@self.Yip+\
+                    rho/2*(np.eye(int(kappa))+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
                 Aeqg = np.vstack((self.Uip,self.Eip,self.Eif))
             else:
                 Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
-                    Lambda_gi+self.lambda_yi*self.Yip.T@self.Yip+(self.Uif.T@C.T@M@C@self.Uif)+\
-                    self.rho/2*(np.eye(int(kappa))+self.Eif.T@self.Eif+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
+                    Lambda_gi+lambda_yi*self.Yip.T@self.Yip+\
+                    rho/2*(np.eye(int(kappa))+self.Eif.T@self.Eif+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)
                 Aeqg = np.vstack((self.Uip,self.Eip))
+            # print(f'finish Hg and Aeqg calculation consumes:{time.time()-start_matrix_cal}.',flush = True)
 
             Phi = np.vstack((np.hstack((Hg,Aeqg.T)),np.hstack((Aeqg,np.zeros([Aeqg.shape[0],Aeqg.shape[0]])))))
             rs.mset({f'Phi_cav_{self.cav_id}':pickle.dumps(Phi)})
+            # print(f'shape: {Phi.shape[0]},{Phi.shape[1]}; rank: {np.linalg.matrix_rank(Phi)}',flush=True)
+
+            time_KKT_begin = time.time()
             KKT_vert = np.linalg.pinv(Phi)
+            print(f"KKT inv consumes:{time.time()-time_KKT_begin}",flush=True)
 
             # Hz_vert
             if self.cav_id != n_cav-1:
-                Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                Hz = rho/2*np.eye(int(kappa))+rho/2*self.Yif.T@K.T@K@self.Yif
             else:
-                Hz = self.rho/2*np.eye(int(kappa))
+                Hz = rho/2*np.eye(int(kappa))
+
+            # print(f'shape: {Hz.shape[0]},{Hz.shape[1]}; rank: {np.linalg.matrix_rank(Hz)}',flush=True)
+            time_Hz_begin = time.time()
             Hz_vert = np.linalg.pinv(Hz)
+            print(f"Hz inv consumes:{time.time()-time_Hz_begin}",flush=True) 
             
             self.KKT_vert = [KKT_vert,curr_step]
             self.Hz_vert = [Hz_vert,curr_step]
 
         # 调用deepc
-        u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,Tstep,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
+        u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
-            self.lambda_yi,self.u_limit,self.s_limit,self.rho,self.KKT_vert[0],self.Hz_vert[0],M,C,self.Uif[-1,-1],rs)
+            self.lambda_yi,self.u_limit,self.s_limit,self.rho,self.KKT_vert[0],self.Hz_vert[0],rs)
 
         # save initial value of dual variables for next timestep
         rs.mset({
@@ -501,9 +517,14 @@ class SubsystemSolver(SubsystemParam):
 
         use_time = time.time() - start_time
         print(f"total computation time: {use_time}",flush=True)
+        y_prediction = self.Yif @ g_opt
+
+        Qi = pickle.loads(rs.mget(f'Qi_in_CAV_{self.cav_id}')[0])
+        Ri = pickle.loads(rs.mget(f'Ri_in_CAV_{self.cav_id}')[0])
+        cost = y_prediction.T@Qi@y_prediction + u_opt.T@Ri@u_opt
 
         # give messages to clients
-        msg_send = [u_opt[0],real_iter_num,use_time]
+        msg_send = [u_opt[0],real_iter_num,use_time,y_prediction[0:p],cost]
         msg_bytes_send = pickle.dumps(msg_send)
         try:
             await websocket.send(msg_bytes_send)
