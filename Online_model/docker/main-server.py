@@ -21,10 +21,18 @@ if __name__ =="__main__":
     iteration_num = 30
 
     while True:
-        # 检验容器上传的rollout_flag_{cav_id}_{timestep_copy}_{k_copy}是否有0项
+        if timestep_copy >= 5:
+            while True:
+                if rs.mget(f'timestep_copy')[0] != None:
+                    if pickle.loads(rs.mget(f'timestep_copy')[0]) == 0:
+                        break
+            timestep_copy = 0
+            k_copy = 0
+
         while True:
             keys = []
             flag_values = []
+
             for i in range(n_cav):
                 keys.append(f'rollout_flag_{i}_{timestep_copy}_{k_copy}')
             
@@ -42,10 +50,12 @@ if __name__ =="__main__":
                 print(f"Optimization quits in time step {timestep_copy+1} after maximum iterations.",flush=True)
                 k_copy = 0
                 timestep_copy = timestep_copy + 1
+                rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
                 break
             elif all(var == 1 for var in flag_values) and len(flag_values)==n_cav:
                 rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(1)})
                 print(f"Optimization quits in time step {timestep_copy+1} after {k_copy+1} iterations.",flush=True)
                 k_copy = 0
                 timestep_copy = timestep_copy + 1
+                rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
                 break
