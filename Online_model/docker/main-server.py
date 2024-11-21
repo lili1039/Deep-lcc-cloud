@@ -21,10 +21,11 @@ if __name__ =="__main__":
     iteration_num = 30
 
     while True:
-        if timestep_copy >= 5:
+        if timestep_copy >= 400-70:
             while True:
-                if rs.mget(f'timestep_copy')[0] != None:
-                    if pickle.loads(rs.mget(f'timestep_copy')[0]) == 0:
+                value = rs.mget(f'timestep_copy')[0]
+                if  value!= None:
+                    if pickle.loads(value) == 0:
                         break
             timestep_copy = 0
             k_copy = 0

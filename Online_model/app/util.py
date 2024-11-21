@@ -458,7 +458,6 @@ class SubsystemSolver(SubsystemParam):
                 f'Yip_in_CAV_{self.cav_id}': pickle.dumps(self.Yip),
                 f'Yif_in_CAV_{self.cav_id}': pickle.dumps(self.Yif),
             })       
-            print(f'kappa={kappa}',flush=True)
             
             if self.cav_id == 0: # the first subsystem has different Hgi
                 Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
