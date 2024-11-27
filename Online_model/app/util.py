@@ -12,7 +12,10 @@ import websockets
 Hankel_update_method = 1
 # 1: with base dataset 2: without base dataset
 
-iteration_num = 30
+# check stopping criteria
+Is_Check = False
+
+iteration_num = 10
 
 def matrix_cal(kappa,cav_id,n_cav,Yif,Qi_stack,Uif,Ri_stack,Yip,P,Uip,Eip,Eif,K,Lambda_gi,lambda_yi,rho,C,M):
     # KKT_vert
@@ -144,32 +147,33 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
             phi_plus = phi + rho*(s_plus - P@Yif@g_plus)
             theta_plus = theta + rho*(u_plus - Uif@g_plus)
 
-            # 计算迭代停止条件并存入数据库
-            error_pri1 = np.linalg.norm(g_plus - z_plus)
-            tolerance_pri1 = math.sqrt(kappa)*error_absolute + \
-                error_relative*max(np.linalg.norm(g_plus),np.linalg.norm(z_plus))
-            error_dual1 = rho*np.linalg.norm(z_plus-z)
-            tolerance_dual1 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(mu_plus)
+            if Is_Check:
+                # 计算迭代停止条件并存入数据库
+                error_pri1 = np.linalg.norm(g_plus - z_plus)
+                tolerance_pri1 = math.sqrt(kappa)*error_absolute + \
+                    error_relative*max(np.linalg.norm(g_plus),np.linalg.norm(z_plus))
+                error_dual1 = rho*np.linalg.norm(z_plus-z)
+                tolerance_dual1 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(mu_plus)
 
-            error_pri2 = np.linalg.norm(epsilon_bar_latter - K@Yif@z_plus)
-            tolerance_pri2 = math.sqrt(N)*error_absolute + \
-                error_relative*max(np.linalg.norm(epsilon_bar_latter),np.linalg.norm(K@Yif@z_plus))
-            Eif_latter = pickle.loads(rs.mget(f'Eif_in_CAV_{cav_id+1}')[0])
-            error_dual2 = rho*np.linalg.norm(Eif_latter.T@K@Yif@(z_plus-z))    
-            tolerance_dual2 = math.sqrt(N)*error_absolute + error_relative*np.linalg.norm(Eif_latter.T@eta_plus)  
-            error_pri3 = np.linalg.norm(s_plus - P@Yif@g_plus)
-            tolerance_pri3 = math.sqrt(s_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P@Yif@g_plus))
-            error_dual3 = rho*np.linalg.norm(Yif.T@P.T@(s_plus-s))
-            tolerance_dual3 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Yif.T@P.T@phi_plus)
-            error_pri4 =  np.linalg.norm(u_plus-Uif@g_plus)
-            tolerance_pri4 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
-            error_dual4 = rho*np.linalg.norm(Uif.T@(u_plus-u))
-            tolerance_dual4 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
+                error_pri2 = np.linalg.norm(epsilon_bar_latter - K@Yif@z_plus)
+                tolerance_pri2 = math.sqrt(N)*error_absolute + \
+                    error_relative*max(np.linalg.norm(epsilon_bar_latter),np.linalg.norm(K@Yif@z_plus))
+                Eif_latter = pickle.loads(rs.mget(f'Eif_in_CAV_{cav_id+1}')[0])
+                error_dual2 = rho*np.linalg.norm(Eif_latter.T@K@Yif@(z_plus-z))    
+                tolerance_dual2 = math.sqrt(N)*error_absolute + error_relative*np.linalg.norm(Eif_latter.T@eta_plus)  
+                error_pri3 = np.linalg.norm(s_plus - P@Yif@g_plus)
+                tolerance_pri3 = math.sqrt(s_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P@Yif@g_plus))
+                error_dual3 = rho*np.linalg.norm(Yif.T@P.T@(s_plus-s))
+                tolerance_dual3 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Yif.T@P.T@phi_plus)
+                error_pri4 =  np.linalg.norm(u_plus-Uif@g_plus)
+                tolerance_pri4 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
+                error_dual4 = rho*np.linalg.norm(Uif.T@(u_plus-u))
+                tolerance_dual4 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
 
-            if error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri2 <= tolerance_pri2 and error_dual2 <= tolerance_dual2 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
-                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
-            else:
-                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
+                if error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri2 <= tolerance_pri2 and error_dual2 <= tolerance_dual2 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
+                else:
+                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
 
             eta = eta_plus
 
@@ -187,25 +191,26 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
             phi_plus = phi + rho*(s_plus - P@Yif@g_plus)
             theta_plus = theta + rho*(u_plus - Uif@g_plus)
 
+            if Is_Check:
             # 计算迭代停止条件并存入数据库
-            error_pri1 = np.linalg.norm(g_plus - z_plus)
-            tolerance_pri1 = math.sqrt(g_plus.shape[0])*error_absolute + \
-                error_relative*max(np.linalg.norm(g_plus),np.linalg.norm(z_plus))
-            error_dual1 = rho*np.linalg.norm(z_plus-z)            
-            tolerance_dual1 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(mu_plus)
-            error_pri3 = np.linalg.norm(s_plus - P@Yif@g_plus)
-            tolerance_pri3 = math.sqrt(s_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P@Yif@g_plus))
-            error_dual3 = rho*np.linalg.norm(Yif.T@P.T@(s_plus-s))
-            tolerance_dual3 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Yif.T@P.T@phi_plus)
-            error_pri4 =  np.linalg.norm(u_plus-Uif@g_plus)
-            tolerance_pri4 = math.sqrt(u_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
-            error_dual4 = rho*np.linalg.norm(Uif.T@(u_plus-u))
-            tolerance_dual4 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
+                error_pri1 = np.linalg.norm(g_plus - z_plus)
+                tolerance_pri1 = math.sqrt(g_plus.shape[0])*error_absolute + \
+                    error_relative*max(np.linalg.norm(g_plus),np.linalg.norm(z_plus))
+                error_dual1 = rho*np.linalg.norm(z_plus-z)            
+                tolerance_dual1 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(mu_plus)
+                error_pri3 = np.linalg.norm(s_plus - P@Yif@g_plus)
+                tolerance_pri3 = math.sqrt(s_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P@Yif@g_plus))
+                error_dual3 = rho*np.linalg.norm(Yif.T@P.T@(s_plus-s))
+                tolerance_dual3 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Yif.T@P.T@phi_plus)
+                error_pri4 =  np.linalg.norm(u_plus-Uif@g_plus)
+                tolerance_pri4 = math.sqrt(u_plus.shape[0])*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
+                error_dual4 = rho*np.linalg.norm(Uif.T@(u_plus-u))
+                tolerance_dual4 = math.sqrt(z_plus.shape[0])*error_absolute + error_relative*np.linalg.norm(Uif.T@theta_plus)
 
-            if error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
-                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
-            else:
-                rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
+                if error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
+                else:
+                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
 
         # Step3: error计算完毕，可以由main-server检查stop criteria是否满足
         # error和tolerance计算完成后，将check_ready标为1，表示该容器已经上传好信息，等待停止迭代信号
@@ -220,18 +225,21 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
         if k == iteration_num-1:
             break
         else:
-            while True:
-                check_flag_bytes=rs.mget(f'rollout_flag_total_{timestep}_{k}')[0]
-                if check_flag_bytes==None:
-                        continue
-                else:
-                    check_flag = pickle.loads(check_flag_bytes)
-                    break
+            if Is_Check:
+                while True:
+                    check_flag_bytes=rs.mget(f'rollout_flag_total_{timestep}_{k}')[0]
+                    if check_flag_bytes==None:
+                            continue
+                    else:
+                        check_flag = pickle.loads(check_flag_bytes)
+                        break
 
-            if check_flag == 0:
+                if check_flag == 0:
+                    continue
+                elif check_flag==1:
+                    break
+            else:
                 continue
-            elif check_flag==1:
-                break
 
     # Record optimal value
     real_iter_num = k+1
@@ -332,8 +340,6 @@ class SubsystemParam:
         self.uini            = []
         self.eini            = []
         self.yini            = []
-        self.KKT_vert        = []
-        self.Hz_vert         = []
         self.rho             = 0
         self.lambda_yi       = 0
 
@@ -355,8 +361,8 @@ class SubsystemSolver(SubsystemParam):
     async def solver(self,websocket, path):
         # 数据库连接
         rs = redis.StrictRedis(host='172.18.0.1',port=6379,db=2,password="chlpw1039") 
-        # 数据库标志该子系统已连接
-        rs.mset({f'Subsystem{self.cav_id}_connect':pickle.dumps(1)})
+        # # 数据库标志该子系统已连接
+        # rs.mset({f'Subsystem{self.cav_id}_connect':pickle.dumps(1)})
 
         # 从websocket获取初始参数和数据
         msg_bytes_recv  = await websocket.recv()
@@ -372,7 +378,7 @@ class SubsystemSolver(SubsystemParam):
         self.yini            = msg_recv[4]
         curr_step            = msg_recv[5]
         Hankel_update_flag   = msg_recv[6]
-        print(f"Subsystem {self.cav_id}: Step {curr_step+1} data loaded",flush=True)
+        # print(f"Subsystem {self.cav_id}: Step {curr_step+1} data loaded",flush=True)
 
         start_time = time.time()
         # 从数据库获取初始参数和数据
@@ -458,6 +464,7 @@ class SubsystemSolver(SubsystemParam):
                 f'Yip_in_CAV_{self.cav_id}': pickle.dumps(self.Yip),
                 f'Yif_in_CAV_{self.cav_id}': pickle.dumps(self.Yif),
             })       
+            # print(f'kappa={kappa}',flush=True)
             
             if self.cav_id == 0: # the first subsystem has different Hgi
                 Hg = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
@@ -471,7 +478,6 @@ class SubsystemSolver(SubsystemParam):
                 Aeqg = np.vstack((self.Uip,self.Eip))
 
             Phi = np.vstack((np.hstack((Hg,Aeqg.T)),np.hstack((Aeqg,np.zeros([Aeqg.shape[0],Aeqg.shape[0]])))))
-            rs.mset({f'Phi_cav_{self.cav_id}':pickle.dumps(Phi)})
             KKT_vert = np.linalg.pinv(Phi)
 
             # Hz_vert
@@ -481,13 +487,11 @@ class SubsystemSolver(SubsystemParam):
                 Hz = self.rho/2*np.eye(int(kappa))
             Hz_vert = np.linalg.pinv(Hz)
             
-            self.KKT_vert = [KKT_vert,curr_step]
-            self.Hz_vert = [Hz_vert,curr_step]
 
         # 调用deepc
         u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,Tstep,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,\
-            self.lambda_yi,self.u_limit,self.s_limit,self.rho,self.KKT_vert[0],self.Hz_vert[0],M,C,self.Uif[-1,-1],rs)
+            self.lambda_yi,self.u_limit,self.s_limit,self.rho,KKT_vert,Hz_vert,M,C,self.Uif[-1,-1],rs)
 
         # save initial value of dual variables for next timestep
         rs.mset({

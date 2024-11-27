@@ -3,6 +3,7 @@ import redis
 import numpy as np
 import asyncio
 
+Is_Check = False
 
 if __name__ =="__main__":
     '''初始化数据库连接:'''
@@ -20,43 +21,44 @@ if __name__ =="__main__":
     k_copy = 0
     iteration_num = 30
 
-    while True:
-        if timestep_copy >= 400-70:
-            while True:
-                value = rs.mget(f'timestep_copy')[0]
-                if  value!= None:
-                    if pickle.loads(value) == 0:
-                        break
-            timestep_copy = 0
-            k_copy = 0
-
+    if Is_Check:
         while True:
-            keys = []
-            flag_values = []
-
-            for i in range(n_cav):
-                keys.append(f'rollout_flag_{i}_{timestep_copy}_{k_copy}')
-            
-            flag_values_bytes = rs.mget(keys)
-
-            for value in flag_values_bytes:
-                if value != None:
-                    flag_values.append(pickle.loads(value))
-
-            if 0 in flag_values and k_copy < iteration_num - 1:
-                rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(0)})
-                k_copy = k_copy+1
-                break
-            elif k_copy == iteration_num - 1:
-                print(f"Optimization quits in time step {timestep_copy+1} after maximum iterations.",flush=True)
+            if timestep_copy >= 400-70:
+                while True:
+                    value = rs.mget(f'timestep_copy')[0]
+                    if value != None:
+                        if pickle.loads(value) == 0:
+                            break
+                timestep_copy = 0
                 k_copy = 0
-                timestep_copy = timestep_copy + 1
-                rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
-                break
-            elif all(var == 1 for var in flag_values) and len(flag_values)==n_cav:
-                rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(1)})
-                print(f"Optimization quits in time step {timestep_copy+1} after {k_copy+1} iterations.",flush=True)
-                k_copy = 0
-                timestep_copy = timestep_copy + 1
-                rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
-                break
+
+            while True:
+                keys = []
+                flag_values = []
+
+                for i in range(n_cav):
+                    keys.append(f'rollout_flag_{i}_{timestep_copy}_{k_copy}')
+                
+                flag_values_bytes = rs.mget(keys)
+
+                for value in flag_values_bytes:
+                    if value != None:
+                        flag_values.append(pickle.loads(value))
+
+                if 0 in flag_values and k_copy < iteration_num - 1:
+                    rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(0)})
+                    k_copy = k_copy+1
+                    break
+                elif k_copy == iteration_num - 1:
+                    print(f"Optimization quits in time step {timestep_copy+1} after maximum iterations.",flush=True)
+                    k_copy = 0
+                    timestep_copy = timestep_copy + 1
+                    rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
+                    break
+                elif all(var == 1 for var in flag_values) and len(flag_values)==n_cav:
+                    rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(1)})
+                    print(f"Optimization quits in time step {timestep_copy+1} after {k_copy+1} iterations.",flush=True)
+                    k_copy = 0
+                    timestep_copy = timestep_copy + 1
+                    rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
+                    break
