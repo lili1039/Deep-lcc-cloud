@@ -1,8 +1,0 @@
-# -*- coding: utf-8 -*-
-numpy
-redis
-websockets
-asyncio
-pandas
-pmdarima
-statsmodels
