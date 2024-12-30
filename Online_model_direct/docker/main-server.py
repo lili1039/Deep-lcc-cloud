@@ -3,7 +3,7 @@ import redis
 import numpy as np
 import asyncio
 
-Is_Check = False
+Is_Check = True
 
 if __name__ =="__main__":
     '''初始化数据库连接:'''
@@ -23,14 +23,14 @@ if __name__ =="__main__":
 
     if Is_Check:
         while True:
-            # if timestep_copy >= 400-70:
-            #     while True:
-            #         value = rs.mget(f'timestep_copy')[0]
-            #         if value != None:
-            #             if pickle.loads(value) == 0:
-            #                 break
-            #     timestep_copy = 0
-            #     k_copy = 0
+            if timestep_copy >= 800-70:
+                while True:
+                    value = rs.mget(f'timestep_copy')[0]
+                    if value != None:
+                        if pickle.loads(value) == 0:
+                            break
+                timestep_copy = 0
+                k_copy = 0
 
             while True:
                 keys = []

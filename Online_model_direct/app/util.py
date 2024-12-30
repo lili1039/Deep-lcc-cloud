@@ -14,11 +14,10 @@ Inv_method = 2
 
 # check stopping criteria
 Is_Check = True
-# True: Check stooping criteria after each
 
 iteration_num = 20
 
-def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,delta_initial,lambda_yi,u_limit,s_limit,rho,KKT_vert,Hz_vert,rs):
+def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,delta_initial,lambda_yi,u_limit,s_limit,rho,Hgi_vert,Hz_vert,rs):
 
     # stoping criterion
     error_absolute = 0.1
@@ -79,7 +78,7 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
                 Yif.T@P.T@phi/2 - Uif.T@theta/2 - rho*Yif.T@P.T@s/2 - rho*Uif.T@u/2 + 1/2*Agi.T@delta - rho/2*Agi.T@beqg
             
         # 计算g+
-        g_plus = -KKT_vert@qg
+        g_plus = -Hgi_vert@qg
 
         # Step2: parallel update z/s/u & mu/eta/phi/theta
             # update epsilon_bar
@@ -115,9 +114,10 @@ def dDeeP_LCC(Tini,N,kappa,timestep,Tstep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,u
 
             if Is_Check:
                 # 计算迭代停止条件并存入数据库
-                error_pri0 = np.linalg.norm(Agi@g_plus - beqg)
+                temp_pri0 = Agi@g_plus
+                error_pri0 = np.linalg.norm(temp_pri0 - beqg)
                 tolerance_pri0 = math.sqrt(beqg.shape[0])*error_absolute + \
-                    error_relative*max(np.linalg.norm(Agi@g_plus),np.linalg.norm(beqg))
+                    error_relative*max(np.linalg.norm(temp_pri0),np.linalg.norm(beqg))
                 
                 error_pri1 = np.linalg.norm(g_plus - z_plus)
                 tolerance_pri1 = math.sqrt(kappa)*error_absolute + \
@@ -455,11 +455,12 @@ class SubsystemSolver(SubsystemParam):
         self.u_limit = np.array([self.dcel_max,self.acel_max])
         self.s_limit = np.array([self.spacing_min-self.s_star,self.spacing_max-self.s_star])  
 
-        H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
+        # H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
 
         # problem size
         m = self.uini.ndim         # the size of control input of each subsystem
         p = self.yini.shape[0]     # the size of output of each subsystem
+        
         # time horizon
         Tini = int(self.Uip.shape[0]/m)
         N = int(self.Uif.shape[0]/m)
@@ -470,10 +471,8 @@ class SubsystemSolver(SubsystemParam):
                 off_col = kappa - (curr_step + 1)
                 if  off_col > k_on[self.cav_id]:
                     result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
-                    # Lambda_gi = np.diag(np.hstack((lambda_g_max/n_cav*np.ones(int(off_col)),Lambda_gi_on[:int(kappa-off_col)])))
                 else: 
-                    result = Hankel_substitute_col_2(Tini,N,int(k_on[self.cav_id]),Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)  
-                    # Lambda_gi = np.diag(np.hstack((lambda_g_max/n_cav*np.ones(int(k_on[self.cav_id])),Lambda_gi_on[:int(kappa-(k_on[self.cav_id]))])))          
+                    result = Hankel_substitute_col_2(Tini,N,int(k_on[self.cav_id]),Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)         
             elif Hankel_update_method == 2:
                 result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
 
@@ -484,7 +483,7 @@ class SubsystemSolver(SubsystemParam):
                     lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
                     self.rho/2*(np.eye(int(kappa))+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)+\
                         self.rho/2*(self.Eif.T@self.Eif+self.Uip.T@self.Uip+self.Eip.T@self.Eip)
-            KKT_vert = np.linalg.pinv(Hgi)
+            Hgi_vert = np.linalg.pinv(Hgi)
 
             # if curr_step == 0:
             #     rs.mset({f'Hgi_vert_2_in_CAV_{self.cav_id}':pickle.dumps(KKT_vert)})
@@ -509,9 +508,9 @@ class SubsystemSolver(SubsystemParam):
             Hz_vert = np.linalg.pinv(Hz)
 
         # 调用deepc
-        u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,delta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,Tstep,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
+        u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,delta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,delta_initial,\
-            self.lambda_yi,self.u_limit,self.s_limit,self.rho,KKT_vert,Hz_vert,rs)
+            self.lambda_yi,self.u_limit,self.s_limit,self.rho,Hgi_vert,Hz_vert,rs)
 
         # save initial value of dual variables for next timestep
         rs.mset({
