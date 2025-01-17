@@ -3,7 +3,7 @@ import redis
 import numpy as np
 import asyncio
 
-Is_Check = True
+Is_Check = False
 
 if __name__ =="__main__":
     '''初始化数据库连接:'''
