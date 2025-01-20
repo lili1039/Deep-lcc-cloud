@@ -9,7 +9,7 @@ from scipy.linalg import block_diag
 # update method
 Hankel_update_method = 1
 # 1: with base dataset 2: without base dataset
-Inv_method = 1
+Inv_method = 2
 # 1: Inv by Recursion 2: Inv by numpy
 
 # check stopping criteria
@@ -547,51 +547,75 @@ class SubsystemSolver(SubsystemParam):
                     result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
                 else: 
                     result = Hankel_substitute_col_2(Tini,N,int(k_on[self.cav_id]),Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)         
+            
+                # calculate inverse of matrices Hgi and Hz
+                if Inv_method == 2 or curr_step == 0: # inverse by numpy
+                    [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
+
+                    M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
+                    H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
+
+                    # Hgi_vert
+                    # Hgi_1 = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
+                    #         lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
+                    #         self.rho/2*(np.eye(kappa)+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)+\
+                    #             self.rho/2*(self.Eif.T@self.Eif+self.Uip.T@self.Uip+self.Eip.T@self.Eip)
+                    Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
+                    # print("Condition number of initial Hgi:", np.linalg.cond(Hgi))
+
+                    # print("Results close?", np.allclose(Hgi_1, Hgi))
+
+                    time_hgi_start = time.time()
+                    Hgi_vert = np.linalg.inv(Hgi)
+
+                    # time_hgi_start = time.time()
+                    # Hgi_vert_0 = np.linalg.inv(Hgi)
+                    A = (lambda_gi+self.rho/2)*np.eye(kappa)
+                    A_vert = np.linalg.inv(A)
+                    temp = np.linalg.inv(M)+H@A_vert@H.T
+                    Mmid_vert = np.linalg.inv(temp)
+                    Hgi_vert_0 = A_vert - A_vert@H.T@Mmid_vert@H@A_vert
+
+                    print('Hgi True?',np.allclose(Hgi_vert_0,Hgi_vert))
+                    # print(Hgi_vert_0[0,0],Hgi_vert_0[1,2])
+                    # print(Hgi_vert[0,0],Hgi_vert[1,2])
+                    Hgi_vert = Hgi_vert_0
+                    # print(f"Hgi_vert consume{time.time()-time_hgi_start}", flush=True)
+                    print('Hgi cond',np.linalg.cond(Hgi))
+                    rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
+                    
+                elif Inv_method == 1: # inverse by recursion
+                    H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
+                    c = result[-1]
+
+                    Hgi_vert_last = pickle.loads(rs.mget(f'Hgi_vert_in_CAV_{self.cav_id}')[0])
+
+                    if off_col > k_on[self.cav_id]:
+                        M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
+                        Hgi_vert = Matrix_inv_phase1(c,M,H,self.rho,lambda_gi,Hgi_vert_last,kappa)
+                        rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
+                    else:
+                        M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
+                        Hgi_vert = Matrix_inv_phase2(c,M,H,self.rho,lambda_gi,Hgi_vert_last,kappa,int(k_on[self.cav_id]))
+                        rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
+
+                        # [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
+                        # H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
+                        # Hgi_2 = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
+                        # Hgi_vert_2 = np.linalg.inv(Hgi_2)
+                        # print("PHASE 2 Results close?", np.allclose(Hgi_vert_2, Hgi_vert), flush=True)
+            
             elif Hankel_update_method == 2:
                 result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
-
-            # calculate inverse of matrices Hgi and Hz
-            if Inv_method == 2 or curr_step == 0: # inverse by numpy
                 [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
 
                 M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
                 H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
-
-                # Hgi_vert
-                # Hgi_1 = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
-                #         lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
-                #         self.rho/2*(np.eye(kappa)+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)+\
-                #             self.rho/2*(self.Eif.T@self.Eif+self.Uip.T@self.Uip+self.Eip.T@self.Eip)
                 Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
-                # print("Condition number of initial Hgi:", np.linalg.cond(Hgi))
-
-                # print("Results close?", np.allclose(Hgi_1, Hgi))
 
                 time_hgi_start = time.time()
                 Hgi_vert = np.linalg.inv(Hgi)
-                # print(f"Hgi_vert consume{time.time()-time_hgi_start}", flush=True)
-                rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
-                
-            elif Inv_method == 1: # inverse by recursion
-                H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
-                c = result[-1]
-
-                Hgi_vert_last = pickle.loads(rs.mget(f'Hgi_vert_in_CAV_{self.cav_id}')[0])
-
-                if off_col > k_on[self.cav_id]:
-                    M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
-                    Hgi_vert = Matrix_inv_phase1(c,M,H,self.rho,lambda_gi,Hgi_vert_last,kappa)
-                    rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
-                else:
-                    M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
-                    Hgi_vert = Matrix_inv_phase2(c,M,H,self.rho,lambda_gi,Hgi_vert_last,kappa,int(k_on[self.cav_id]))
-                    rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
-
-                    # [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
-                    # H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
-                    # Hgi_2 = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
-                    # Hgi_vert_2 = np.linalg.inv(Hgi_2)
-                    # print("PHASE 2 Results close?", np.allclose(Hgi_vert_2, Hgi_vert), flush=True)
+                # rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
             
             # Hz_vert
             [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
