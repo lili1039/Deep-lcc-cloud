@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-version: "3.0"
+version: "3.8"
 services:
   veh-0:
     container_name: veh-0
@@ -10,6 +10,11 @@ services:
       - ../app:/app  
       - ../docker:/docker
     command: bash /docker/run0.sh
+    deploy:
+      resources:
+        limits:
+          cpus: "12.0"  # 使用最多 12 个 CPU 核心
+    cpuset: "0-11"  # 分配第 0 到 11 核心
 
   veh-1:
     container_name: veh-1
@@ -20,6 +25,11 @@ services:
       - ../app:/app
       - ../docker:/docker
     command: bash /docker/run1.sh
+    deploy:
+      resources:
+        limits:
+          cpus: "12.0"
+    cpuset: "12-23"  # 分配第 12 到 23 核心
 
   veh-2:
     container_name: veh-2
@@ -30,6 +40,11 @@ services:
       - ../app:/app
       - ../docker:/docker
     command: bash /docker/run2.sh
+    deploy:
+      resources:
+        limits:
+          cpus: "12.0"
+    cpuset: "24-35"  # 分配第 24 到 35 核心
 
   veh-3:
     container_name: veh-3
@@ -40,6 +55,11 @@ services:
       - ../app:/app
       - ../docker:/docker
     command: bash /docker/run3.sh
+    deploy:
+      resources:
+        limits:
+          cpus: "12.0"
+    cpuset: "36-47"  # 分配第 36 到 47 核心
 
   veh-4:
     container_name: veh-4
@@ -50,3 +70,8 @@ services:
       - ../app:/app
       - ../docker:/docker
     command: bash /docker/run4.sh
+    deploy:
+      resources:
+        limits:
+          cpus: "12.0"
+    cpuset: "48-59"  # 分配第 48 到 59 核心

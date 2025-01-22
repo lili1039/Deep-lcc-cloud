@@ -13,7 +13,7 @@ Inv_method = 2
 # 1: Inv by Recursion 2: Inv by numpy
 
 # check stopping criteria
-Is_Check = False
+Is_Check = True
 
 iteration_num = 20
 
@@ -242,34 +242,22 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
 # delete the first column and add a new column at the last
 def Hankel_substitute_col_1(Tini,N,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initial,mu_initial):
-    new_up = np.zeros(Tini)
-    for j in range(Tini):
-        new_up[j] = Su[0,k+j]
+    new_up = Su[0, k:k + Tini]
     Up_temp = np.hstack((Uip[:,1:],new_up.reshape([int(Tini),1])))
 
-    new_uf = np.zeros(N)
-    for j in range(N):
-        new_uf[j] = Su[0,k+Tini+j]
+    new_uf = Su[0, k + Tini:k + Tini + N]
     Uf_temp = np.hstack((Uif[:,1:],new_uf.reshape([int(N),1])))
 
-    new_yp = np.zeros(p*Tini)
-    for j in range(Tini):
-        new_yp[j*p:(j+1)*p] = Sy[:,k+j]
+    new_yp = Sy[:, k:k + Tini].reshape(-1, order='F')
     Yp_temp = np.hstack((Yip[:,1:],new_yp.reshape([int(p*Tini),1])))
 
-    new_yf = np.zeros(p*N)
-    for j in range(N):
-        new_yf[j*p:(j+1)*p] = Sy[:,k+Tini+j]
+    new_yf = Sy[:, k + Tini:k + Tini + N].reshape(-1, order='F')
     Yf_temp = np.hstack((Yif[:,1:],new_yf.reshape([int(p*N),1])))
 
-    new_ep = np.zeros(Tini)
-    for j in range(Tini):
-        new_ep[j] = Se[0,k+j]
+    new_ep = Se[0, k:k + Tini]
     Ep_temp = np.hstack((Eip[:,1:],new_ep.reshape([int(Tini),1])))
 
-    new_ef = np.zeros(N)
-    for j in range(N):
-        new_ef[j] = Se[0,k+Tini+j]
+    new_ef = Se[0, k + Tini:k + Tini + N]
     Ef_temp = np.hstack((Eif[:,1:],new_ef.reshape([int(N),1])))
 
     g_initial = np.hstack((g_initial[1:],0))
@@ -283,34 +271,22 @@ def Hankel_substitute_col_1(Tini,N,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initia
 def Hankel_substitute_col_2(Tini,N,k_on,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_initial,mu_initial):
     # k_on is the index of the beginning of Online part, and also the minimal number of column that ensure offline data satisfying P.E. condition.
 
-    new_up = np.zeros(Tini)
-    for j in range(Tini):
-        new_up[j] = Su[0,k+j]
+    new_up = Su[0, k:k + Tini]
     Up_temp = np.hstack((Uip[:,0:k_on],Uip[:,k_on+1:],new_up.reshape([int(Tini),1])))
 
-    new_uf = np.zeros(N)
-    for j in range(N):
-        new_uf[j] = Su[0,k+Tini+j]
+    new_uf = Su[0, k + Tini:k + Tini + N]
     Uf_temp = np.hstack((Uif[:,0:k_on],Uif[:,k_on+1:],new_uf.reshape([int(N),1])))
 
-    new_yp = np.zeros(p*Tini)
-    for j in range(Tini):
-        new_yp[j*p:(j+1)*p] = Sy[:,k+j]
+    new_yp = Sy[:, k:k + Tini].reshape(-1, order='F')  # Reshape column-wise
     Yp_temp = np.hstack((Yip[:,0:k_on],Yip[:,k_on+1:],new_yp.reshape([int(p*Tini),1])))
 
-    new_yf = np.zeros(p*N)
-    for j in range(N):
-        new_yf[j*p:(j+1)*p] = Sy[:,k+Tini+j]
+    new_yf = Sy[:, k + Tini:k + Tini + N].reshape(-1, order='F')
     Yf_temp = np.hstack((Yif[:,0:k_on],Yif[:,k_on+1:],new_yf.reshape([int(p*N),1])))
 
-    new_ep = np.zeros(Tini)
-    for j in range(Tini):
-        new_ep[j] = Se[0,k+j]
+    new_ep = Se[0, k:k + Tini]
     Ep_temp = np.hstack((Eip[:,0:k_on],Eip[:,k_on+1:],new_ep.reshape([int(Tini),1])))
 
-    new_ef = np.zeros(N)
-    for j in range(N):
-        new_ef[j] = Se[0,k+Tini+j]
+    new_ef = Se[0, k + Tini:k + Tini + N]
     Ef_temp = np.hstack((Eif[:,0:k_on],Eif[:,k_on+1:],new_ef.reshape([int(N),1])))
 
     g_initial = np.hstack((g_initial[0:k_on],g_initial[k_on+1:],0))
@@ -321,50 +297,37 @@ def Hankel_substitute_col_2(Tini,N,k_on,Su,Sy,Se,Uip,Uif,Yip,Yif,Eip,Eif,k,p,g_i
     return [Up_temp,Uf_temp,Yp_temp,Yf_temp,Ep_temp,Ef_temp,g_initial,mu_initial,c]
 
 # Calculate inv(Hgi+) based on known inv(Hgi)
-def Matrix_inv_add1newcol(c,Mi,Hi,rho,lambda_gi,Hgi_vert_last,kappa):
+def Matrix_inv_add1newcol(c,Mi,Hi,regu_term,vert_last,kappa):
     # 尾加一列 
     c = c.reshape(-1,1)
     m_vec = c.reshape(1,-1)@Mi@Hi
-    m = c.reshape(1,-1)@Mi@c.reshape(-1,1)+(lambda_gi+rho/2)
-    ms = m-m_vec.reshape(1,-1)@Hgi_vert_last@m_vec.reshape(-1,1)
+    m = c.reshape(1,-1)@Mi@c.reshape(-1,1)+regu_term
+    ms = m-m_vec.reshape(1,-1)@vert_last@m_vec.reshape(-1,1)
 
+    # True value examination
     # Hgi_plus = np.hstack((Hi,c.reshape(-1,1))).T@Mi@np.hstack((Hi,c.reshape(-1,1))) + (rho/2+lambda_gi)*np.eye(kappa+1)
-    # Hgi_last = Hi.T@Mi@Hi + (rho/2+lambda_gi)*np.eye(kappa) 
-    # Hgi_last_vert_2 = np.linalg.inv(Hgi_last)
-    # print("last Hgi vert Results close?", np.allclose(Hgi_last_vert_2, Hgi_vert_last)) # True
-    # Hgi_2 = np.vstack((np.hstack((Hgi_last,m_vec.reshape(-1,1))),np.hstack((m_vec.reshape(1,-1),m))))
-    # print("Hgi construct Results close?", np.allclose(Hgi_plus, Hgi_2)) # True
-
-    # print("Condition number of A11:", np.linalg.cond(Hgi_last)) # 条件数很大 病态严重
-
-    Hgi_vert = (1/ms)*np.vstack((np.hstack((ms*Hgi_vert_last+Hgi_vert_last@m_vec.reshape(-1,1)@m_vec.reshape(1,-1)@Hgi_vert_last,-Hgi_vert_last@m_vec.reshape(-1,1))),np.hstack((-m_vec.reshape(1,-1)@Hgi_vert_last,np.eye(1)))))
     # Hgi_vert_true = np.linalg.inv(Hgi_plus)
-    # print("Hgi vert Results close?", np.allclose(Hgi_vert_true[-1,-1], Hgi_vert[-1,-1])) # False
-    # print('Recursion last element:',Hgi_vert[-1,-1])
-    # print('True last element:',Hgi_vert_true[-1,-1])
+    # print((Hgi_vert_true*ms)[-1,-1],flush=True)
+
+    Hgi_vert = (1/ms)*np.vstack((np.hstack((ms*vert_last+vert_last@m_vec.reshape(-1,1)@m_vec.reshape(1,-1)@vert_last,-vert_last@m_vec.reshape(-1,1))),np.hstack((-m_vec.reshape(1,-1)@vert_last,np.eye(1)))))
                                   
     return Hgi_vert
 
 # Calculate inv(Hgi-) based on known inv(Hgi)
-def Matrix_inv_delete1stcol(Hgi_vert_last):
-    a = Hgi_vert_last[0,0]
-    cT = Hgi_vert_last[1:,0]
-    b = Hgi_vert_last[0,1:]
-    D = Hgi_vert_last[1:,1:]
+def Matrix_inv_delete1stcol(vert_last):
+    a = vert_last[0,0]
+    cT = vert_last[1:,0]
+    b = vert_last[0,1:]
+    D = vert_last[1:,1:]
     
     Hgi_vert = D-((1/a)*cT.reshape(-1,1)@b.reshape(1,-1))
 
     return Hgi_vert
 
-def Matrix_inv_phase1(c,Mi,Hi,rho,lambda_gi,Hgi_vert_last,kappa):
-    Hgi_vert_plus = Matrix_inv_add1newcol(c,Mi,Hi,rho,lambda_gi,Hgi_vert_last,kappa)
-    # Hgi = np.hstack((Hi,c.reshape(-1,1))).T@Mi@np.hstack((Hi,c.reshape(-1,1))) + (rho/2+lambda_gi)*np.eye(kappa+1)
-    # Hgi_vert_1 = np.linalg.inv(Hgi)
-    # print("PLUS Results close?", np.allclose(Hgi_vert_1, Hgi_vert_plus))
-
-    Hgi_vert = Matrix_inv_delete1stcol(Hgi_vert_plus)
-
-    return Hgi_vert
+def Matrix_inv_phase1(c,Mi,Hi,regu_term,vert_last,kappa):
+    vert_plus = Matrix_inv_add1newcol(c,Mi,Hi,regu_term,vert_last,kappa)
+    vert = Matrix_inv_delete1stcol(vert_plus)
+    return vert
 
 def create_Pc(kon, kappa):
     # Identity matrices
@@ -412,19 +375,21 @@ def create_Pr(kon, kappa):
 
     return matrix
 
-def Matrix_inv_phase2(c,Mi,Hi,rho,lambda_gi,Hgi_vert_last,kappa,k_on):
-    Hgi_vert_plus = Matrix_inv_add1newcol(c,Mi,Hi,rho,lambda_gi,Hgi_vert_last,kappa)
+def Matrix_inv_phase2(c,Mi,Hi,regu_term,vert_last,kappa,k_on,cav_id,rs):
+    vert_plus = Matrix_inv_add1newcol(c,Mi,Hi,regu_term,vert_last,kappa)
     # Hgi = np.hstack((Hi,c.reshape(-1,1))).T@Mi@np.hstack((Hi,c.reshape(-1,1))) + (rho/2+lambda_gi)*np.eye(kappa+1)
     # Hgi_vert_1 = np.linalg.inv(Hgi)
     # print("PLUS Results close?", np.allclose(Hgi_vert_1, Hgi_vert_plus))
     # Hgi_vert_plus = Hgi_vert_1
 
-    Pc = create_Pc(k_on,kappa)
-    Pc_vert = np.linalg.inv(Pc)
-    Pr = create_Pr(k_on,kappa)
-    Pr_vert = np.linalg.inv(Pr)
+    # Pc = create_Pc(k_on,kappa)
+    # Pc_vert = np.linalg.inv(Pc)
+    # Pr = create_Pr(k_on,kappa)
+    # Pr_vert = np.linalg.inv(Pr)
+    Pr_vert = pickle.loads(rs.mget(f'Pr_vert_in_CAV_{cav_id}')[0])
+    Pc_vert = pickle.loads(rs.mget(f'Pc_vert_in_CAV_{cav_id}')[0])
 
-    Hgi_vert = Matrix_inv_delete1stcol(Pc_vert @ Hgi_vert_plus @Pr_vert)
+    Hgi_vert = Matrix_inv_delete1stcol(Pc_vert @ vert_plus @Pr_vert)
 
     return Hgi_vert
 
@@ -489,7 +454,8 @@ class SubsystemSolver(SubsystemParam):
             f'Yip_in_CAV_{self.cav_id}',
             f'Yif_in_CAV_{self.cav_id}',
             f'lambda_yi',
-            f'lambda_gi',
+            f'lambda_gi_max',
+            f'lambda_gi_min',
             f'rho',
             f'g_initial_in_CAV_{self.cav_id}',
             f'mu_initial_in_CAV_{self.cav_id}',
@@ -506,6 +472,7 @@ class SubsystemSolver(SubsystemParam):
             f'Ri_in_CAV_{self.cav_id}',
             f'K_in_CAV_{self.cav_id}',
             f'P_in_CAV_{self.cav_id}',
+            f'M_vert_in_CAV_{self.cav_id}',
             f'acel_max',
             f'dcel_max',
             f's_max',
@@ -520,16 +487,16 @@ class SubsystemSolver(SubsystemParam):
         # 使用循环简化赋值操作
         (
             self.Uip, self.Uif, self.Eip, self.Eif, self.Yip, self.Yif,
-            self.lambda_yi, lambda_gi, self.rho,
+            self.lambda_yi, lambda_gi_max, lambda_gi_min, self.rho,
             g_initial, mu_initial, eta_initial, phi_initial, theta_initial, delta_initial,
             Su, Sy, Se, 
-            n_cav, k_on, Qi_stack, Ri_stack, K, P, 
+            n_cav, k_on, Qi_stack, Ri_stack, K, P, M_vert,
             self.acel_max, self.dcel_max, self.spacing_max, self.spacing_min, self.s_star, Tstep
         ) = [pickle.loads(value) for value in values]
 
         self.u_limit = np.array([self.dcel_max,self.acel_max])
         self.s_limit = np.array([self.spacing_min-self.s_star,self.spacing_max-self.s_star])  
-
+        
         # problem size
         m = self.uini.ndim         # the size of control input of each subsystem
         p = self.yini.shape[0]     # the size of output of each subsystem
@@ -538,11 +505,12 @@ class SubsystemSolver(SubsystemParam):
         Tini = int(self.Uip.shape[0]/m)
         N = int(self.Uif.shape[0]/m)
         kappa = int(self.Uip.shape[1])
+        lambda_gi_on = np.linspace(lambda_gi_max, lambda_gi_min, int(kappa-k_on[self.cav_id]))
 
         if Hankel_update_flag:
             # generate new Hankel Matrices
             if Hankel_update_method == 1 :
-                off_col = kappa - (curr_step + 1)
+                off_col = int(max(kappa - (curr_step + 1),k_on[self.cav_id]))
                 if  off_col > k_on[self.cav_id]:
                     result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
                 else: 
@@ -552,51 +520,57 @@ class SubsystemSolver(SubsystemParam):
                 if Inv_method == 2 or curr_step == 0: # inverse by numpy
                     [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
 
-                    M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
+                    # M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
                     H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
 
                     # Hgi_vert
-                    # Hgi_1 = self.Yif.T@Qi_stack@self.Yif+self.Uif.T@Ri_stack@self.Uif+\
-                    #         lambda_gi*np.eye(kappa)+self.lambda_yi*self.Yip.T@self.Yip+\
-                    #         self.rho/2*(np.eye(kappa)+self.Yif.T@P.T@P@self.Yif+self.Uif.T@self.Uif)+\
-                    #             self.rho/2*(self.Eif.T@self.Eif+self.Uip.T@self.Uip+self.Eip.T@self.Eip)
-                    Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
+                    # Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
                     # print("Condition number of initial Hgi:", np.linalg.cond(Hgi))
+                    # Hgi_vert = np.linalg.inv(Hgi)
 
-                    # print("Results close?", np.allclose(Hgi_1, Hgi))
-
-                    time_hgi_start = time.time()
-                    Hgi_vert = np.linalg.inv(Hgi)
-
-                    # time_hgi_start = time.time()
-                    # Hgi_vert_0 = np.linalg.inv(Hgi)
-                    A = (lambda_gi+self.rho/2)*np.eye(kappa)
-                    A_vert = np.linalg.inv(A)
-                    temp = np.linalg.inv(M)+H@A_vert@H.T
+                    # Woodbury computational method
+                    lambda_gi = np.concatenate((np.full(off_col, lambda_gi_max), lambda_gi_on[:kappa-off_col]))
+                    # A = (lambda_gi+self.rho/2)*np.eye(kappa) 
+                    # A_vert = np.linalg.pinv(A)
+                    
+                    A_vert = np.diag(1/(lambda_gi+self.rho/2))
+                    temp = M_vert+H@A_vert@H.T
                     Mmid_vert = np.linalg.inv(temp)
-                    Hgi_vert_0 = A_vert - A_vert@H.T@Mmid_vert@H@A_vert
+                    Hgi_vert = A_vert - A_vert@H.T@Mmid_vert@H@A_vert
 
-                    print('Hgi True?',np.allclose(Hgi_vert_0,Hgi_vert))
-                    # print(Hgi_vert_0[0,0],Hgi_vert_0[1,2])
-                    # print(Hgi_vert[0,0],Hgi_vert[1,2])
-                    Hgi_vert = Hgi_vert_0
+                    # print('Hgi True?',np.allclose(Hgi_vert_0,Hgi_vert))
+                    # Hgi_vert = Hgi_vert_0
+        
                     # print(f"Hgi_vert consume{time.time()-time_hgi_start}", flush=True)
-                    print('Hgi cond',np.linalg.cond(Hgi))
-                    rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
+                    # print('Hgi cond',np.linalg.cond(Hgi))
+                    
+                    # rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
+                    
+                    # Hz_vert
+                    if self.cav_id != n_cav-1:
+                        Hz_vert = (2/self.rho)*(np.eye(kappa)-self.Yif.T@K.T@np.linalg.inv(np.eye(N)+K@self.Yif@self.Yif.T@K.T)@K@self.Yif)
+
+                        # Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                        # Hz_vert = np.linalg.inv(Hz)
+
+                        # print(np.allclose(Hz_vert_0,Hz_vert))
+                        # rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+                    else:
+                        Hz_vert = (2/self.rho)*np.eye(int(kappa))
+                        # rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
                     
                 elif Inv_method == 1: # inverse by recursion
                     H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
                     c = result[-1]
 
                     Hgi_vert_last = pickle.loads(rs.mget(f'Hgi_vert_in_CAV_{self.cav_id}')[0])
+                    M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
 
                     if off_col > k_on[self.cav_id]:
-                        M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
-                        Hgi_vert = Matrix_inv_phase1(c,M,H,self.rho,lambda_gi,Hgi_vert_last,kappa)
+                        Hgi_vert = Matrix_inv_phase1(c,M,H,self.rho/2+lambda_gi,Hgi_vert_last,kappa)
                         rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
                     else:
-                        M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
-                        Hgi_vert = Matrix_inv_phase2(c,M,H,self.rho,lambda_gi,Hgi_vert_last,kappa,int(k_on[self.cav_id]))
+                        Hgi_vert = Matrix_inv_phase2(c,M,H,self.rho/2+lambda_gi,Hgi_vert_last,kappa,int(k_on[self.cav_id]),self.cav_id,rs)
                         rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
 
                         # [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
@@ -604,6 +578,26 @@ class SubsystemSolver(SubsystemParam):
                         # Hgi_2 = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
                         # Hgi_vert_2 = np.linalg.inv(Hgi_2)
                         # print("PHASE 2 Results close?", np.allclose(Hgi_vert_2, Hgi_vert), flush=True)
+
+                    # Hz_vert
+                    if self.cav_id != n_cav-1:
+                        Hz_vert_last = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
+                        H_2 = self.Yif
+                        M_2 = self.rho/2*K.T@K
+                        if off_col > k_on[self.cav_id]:
+                            Hz_vert = Matrix_inv_phase1(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa)
+                            rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+                            # Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                            # Hz_vert = np.linalg.pinv(Hz)
+                        else:
+                            Hz_vert = Matrix_inv_phase2(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa,int(k_on[self.cav_id]),self.cav_id,rs)
+                            rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+                            # Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                            # Hz_vert = np.linalg.pinv(Hz)
+                        # print('Hz cond,', np.linalg.cond(Hz_vert))
+                    else:
+                        # Hz = self.rho/2*np.eye(int(kappa))
+                        Hz_vert = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
             
             elif Hankel_update_method == 2:
                 result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
@@ -613,21 +607,46 @@ class SubsystemSolver(SubsystemParam):
                 H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
                 Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
 
-                time_hgi_start = time.time()
+                # time_hgi_start = time.time()
                 Hgi_vert = np.linalg.inv(Hgi)
+                if self.cav_id != n_cav-1:
+                    Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                    Hz_vert = np.linalg.pinv(Hz)
+                else:
+                    Hz_vert = (2/self.rho)*np.eye(int(kappa))
                 # rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
             
-            # Hz_vert
-            [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
-            if self.cav_id != n_cav-1:
-                Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-            else:
-                Hz = self.rho/2*np.eye(int(kappa))
+            # # Hz_vert
+            # if self.cav_id != n_cav-1:
+            #     if curr_step == 0:
+            #         [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
+            #         Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+            #         Hz_vert = np.linalg.pinv(Hz)
+            #         rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+            #     else:
+            #         Hz_vert_last = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
+            #         H_2 = self.Yif
+            #         M_2 = K.T@K
+            #         if off_col > k_on[self.cav_id]:
+            #             Hz_vert = Matrix_inv_phase1(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa)
+            #             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+            #             Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+            #             Hz_vert = np.linalg.pinv(Hz)
+            #         else:
+            #             Hz_vert = Matrix_inv_phase2(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa,int(k_on[self.cav_id]))
+            #             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+            #             Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+            #             Hz_vert = np.linalg.pinv(Hz)
+            #         print('Hz cond,', np.linalg.cond(Hz_vert))
+            # else:
+            #     # Hz = self.rho/2*np.eye(int(kappa))
+            #     Hz_vert = (2/self.rho)*np.eye(int(kappa))
 
             # time_hz_start = time.time()
-            Hz_vert = np.linalg.pinv(Hz)
+            # Hz_vert = np.linalg.pinv(Hz)
             # print(f"Hz_vert consume{time.time()-time_hz_start}", flush=True)
 
+        [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
         # 调用deepc
         u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,delta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
             self.Yif,self.Eip,self.Eif,self.uini,self.yini,self.eini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,delta_initial,\
@@ -650,15 +669,14 @@ class SubsystemSolver(SubsystemParam):
         }) 
 
         use_time = time.time() - start_time
-        # print(f"total computation time: {use_time}",flush=True)
-
+        print(f"total computation time: {use_time}",flush=True)
 
         # cost
         y_cost = (self.Yif@g_opt).T@Qi_stack@(self.Yif@g_opt)
         u_cost = (u_opt).T@Ri_stack@(u_opt)
         gi_cost = lambda_gi*g_opt.T@g_opt
         sig_yi_cost = self.lambda_yi*(self.Yip@g_opt-(self.yini.T).reshape(-1)).T@(self.Yip@g_opt-(self.yini.T).reshape(-1))
-        print(f'y/u/gi/sig_yi cost:{y_cost}/{u_cost}/{gi_cost}/{sig_yi_cost}',flush=True)
+        # print(f'y/u/gi/sig_yi cost:{y_cost}/{u_cost}/{gi_cost}/{sig_yi_cost}',flush=True)
 
         # give messages to clients
         msg_send = [u_opt[0],real_iter_num,use_time]
