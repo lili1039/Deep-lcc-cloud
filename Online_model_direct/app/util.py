@@ -520,23 +520,23 @@ class SubsystemSolver(SubsystemParam):
                 if Inv_method == 2 or curr_step == 0: # inverse by numpy
                     [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
 
-                    # M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
+                    M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
                     H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
 
                     # Hgi_vert
-                    # Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
-                    # print("Condition number of initial Hgi:", np.linalg.cond(Hgi))
-                    # Hgi_vert = np.linalg.inv(Hgi)
+                    lambda_gi = np.concatenate((np.full(off_col, lambda_gi_max), lambda_gi_on[:kappa-off_col]))
+                    Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
+                    Hgi_vert = np.linalg.inv(Hgi)
 
                     # Woodbury computational method
-                    lambda_gi = np.concatenate((np.full(off_col, lambda_gi_max), lambda_gi_on[:kappa-off_col]))
-                    # A = (lambda_gi+self.rho/2)*np.eye(kappa) 
-                    # A_vert = np.linalg.pinv(A)
+                    # lambda_gi = np.concatenate((np.full(off_col, lambda_gi_max), lambda_gi_on[:kappa-off_col]))
+                    # # A = (lambda_gi+self.rho/2)*np.eye(kappa) 
+                    # # A_vert = np.linalg.pinv(A)
                     
-                    A_vert = np.diag(1/(lambda_gi+self.rho/2))
-                    temp = M_vert+H@A_vert@H.T
-                    Mmid_vert = np.linalg.inv(temp)
-                    Hgi_vert = A_vert - A_vert@H.T@Mmid_vert@H@A_vert
+                    # A_vert = np.diag(1/(lambda_gi+self.rho/2))
+                    # temp = M_vert+H@A_vert@H.T
+                    # Mmid_vert = np.linalg.inv(temp)
+                    # Hgi_vert = A_vert - A_vert@H.T@Mmid_vert@H@A_vert
 
                     # print('Hgi True?',np.allclose(Hgi_vert_0,Hgi_vert))
                     # Hgi_vert = Hgi_vert_0
@@ -548,10 +548,10 @@ class SubsystemSolver(SubsystemParam):
                     
                     # Hz_vert
                     if self.cav_id != n_cav-1:
-                        Hz_vert = (2/self.rho)*(np.eye(kappa)-self.Yif.T@K.T@np.linalg.inv(np.eye(N)+K@self.Yif@self.Yif.T@K.T)@K@self.Yif)
+                        # Hz_vert = (2/self.rho)*(np.eye(kappa)-self.Yif.T@K.T@np.linalg.inv(np.eye(N)+K@self.Yif@self.Yif.T@K.T)@K@self.Yif)
 
-                        # Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-                        # Hz_vert = np.linalg.inv(Hz)
+                        Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                        Hz_vert = np.linalg.inv(Hz)
 
                         # print(np.allclose(Hz_vert_0,Hz_vert))
                         # rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
