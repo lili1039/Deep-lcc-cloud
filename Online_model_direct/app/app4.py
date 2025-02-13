@@ -13,14 +13,34 @@ if __name__ == "__main__":
     # 车辆参数
     Subsystem.cav_id = 4
 
-    my_port = 5005 + Subsystem.cav_id
+    my_port = 5005
     stop_event = threading.Event()
     data_queue = queue.Queue()  # 🛠 用于存储接收到的数据
 
     # ✅ **启动后台线程，持续监听 my_port**
-    receiver_thread = threading.Thread(target=receive_data, args=(my_port, stop_event, data_queue))
-    receiver_thread.daemon = True  
-    receiver_thread.start()
+    # receiver_thread = threading.Thread(target=receive_data, args=(my_port, stop_event, data_queue))
+    # receiver_thread.daemon = True  
+    # receiver_thread.start()
+
+    receiver_thread_0 = threading.Thread(target=receive_data, args=(my_port+0, stop_event, data_queue))
+    receiver_thread_0.daemon = True  
+    receiver_thread_0.start()
+
+    receiver_thread_1 = threading.Thread(target=receive_data, args=(my_port+1, stop_event, data_queue))
+    receiver_thread_1.daemon = True  
+    receiver_thread_1.start()
+
+    receiver_thread_2 = threading.Thread(target=receive_data, args=(my_port+2, stop_event, data_queue))
+    receiver_thread_2.daemon = True  
+    receiver_thread_2.start()
+
+    receiver_thread_3 = threading.Thread(target=receive_data, args=(my_port+3, stop_event, data_queue))
+    receiver_thread_3.daemon = True  
+    receiver_thread_3.start()
+
+    receiver_thread_4 = threading.Thread(target=receive_data, args=(my_port+4, stop_event, data_queue))
+    receiver_thread_4.daemon = True  
+    receiver_thread_4.start()
 
     # 创建事件循环
     loop = asyncio.new_event_loop()

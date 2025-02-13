@@ -3,7 +3,7 @@ import redis
 import numpy as np
 import asyncio
 
-Is_Check = False
+Is_Check = True
 
 if __name__ =="__main__":
     '''初始化数据库连接:'''
@@ -19,7 +19,7 @@ if __name__ =="__main__":
     # 各自检查
     timestep_copy = 0
     k_copy = 0
-    iteration_num = 20
+    iteration_num = 10
 
     if Is_Check:
         while True:

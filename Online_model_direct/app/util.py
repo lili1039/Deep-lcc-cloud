@@ -16,9 +16,13 @@ Inv_method = 2
 # 1: Inv by Recursion 2: Inv by numpy
 
 # check stopping criteria
-Is_Check =  False
+Is_Check =  True
 
-iteration_num = 1
+# communication
+Com_way = 2
+# 1:TCP 2:Redis
+
+iteration_num = 10
 
 def send_data(host, port, data, max_retries=100, retry_interval=1):
     """向指定地址和端口的 TCP 服务器发送数据，若连接失败则不断重试"""
@@ -31,7 +35,7 @@ def send_data(host, port, data, max_retries=100, retry_interval=1):
                 # print(f"数据成功发送到 {host}:{port}")
                 return  # 发送成功后返回
         except (ConnectionRefusedError, TimeoutError) as e:
-            print(f"连接 {host}:{port} 失败，错误: {e}，尝试重新连接 ({attempt + 1}/{max_retries})")
+            print(f"连接 {host}:{port} 失败，错误: {e}，尝试重新连接 ({attempt + 1}/{max_retries})",flush=True)
             attempt += 1
             time.sleep(retry_interval)
     
@@ -59,17 +63,21 @@ def receive_data(port, stop_event, data_queue):
 
 def get_data_by_type(data_queue, desired_type):
     """从队列中获取指定类型的数据，如果没有则阻塞等待"""
+    start_time = time.time()
     while True:
         try:
             # 获取队列中的第一个数据
             data = data_queue.get()  # 阻塞直到队列中有数据
-            # print(f"获取数据: {data['type']}, 时间戳: {time.time()}")
+            
             if data['type'] == desired_type:
                 # 找到符合条件的类型，返回
                 return data['data']
             else:
                 # 如果类型不符，将数据放回队列等待下一次处理
                 data_queue.put(data)
+            
+            # if time.time() - start_time >= timeout:
+            #     print(f"超时未收到数据:{desired_type}")
         except queue.Empty:
             print("队列为空，等待数据...",flush=True)
             continue
@@ -125,25 +133,23 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
             # updata eta_bar
             # 对于i=1~n-1的CAV计算eta_bar并发送给后一个CAVi+1
 
-        # if cav_id != n_cav-1:
-        #     eta_bar = eta - rho*K@Yif@z
-        #     rs.mset({f'eta_bar_{cav_id}_{timestep}_{k}':pickle.dumps(eta_bar)})
+        if Com_way == 2:
+            if cav_id != n_cav-1:
+                eta_bar = eta - rho*K@Yif@z
+                rs.mset({f'eta_bar_{cav_id}_{timestep}_{k}':pickle.dumps(eta_bar)})
 
-        # if cav_id != 0:
-        #     while True:
-        #         if rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0] != None:
-        #             eta_bar_former_0 = pickle.loads(rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0])
-        #             break
+            if cav_id != 0:
+                while True:
+                    if rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0] != None:
+                        eta_bar_former = pickle.loads(rs.mget(f'eta_bar_{cav_id-1}_{timestep}_{k}')[0])
+                        break
+        elif Com_way == 1:
+            if cav_id != n_cav-1:
+                eta_bar = eta - rho * K @ Yif @ z
+                send_data(next_host, my_port, {'type':f'eta_bar_{cav_id}_{timestep}_{k}','data':eta_bar})
 
-        if next_port:
-            eta_bar = eta - rho * K @ Yif @ z
-            send_data(next_host, next_port, {'type':f'eta_bar_{cav_id}_{timestep}_{k}','data':eta_bar})
-            # print(f'{cav_id} send success.',flush=True)
-
-        if prev_host:
-            eta_bar_former = get_data_by_type(data_queue, f'eta_bar_{cav_id-1}_{timestep}_{k}')
-            # print(np.allclose(eta_bar_former_0,eta_bar_former),flush=True)
-            # print(f'{cav_id} receive success.',flush=True)
+            if cav_id != 0:
+                eta_bar_former = get_data_by_type(data_queue, f'eta_bar_{cav_id-1}_{timestep}_{k}')
 
         # 计算qg
         if cav_id == 0:
@@ -164,23 +170,23 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
             # 对于i=2~n的CAV更新epsilon_bar后发送给CAVi-1
             # 对于i=2~n的CAV，同时发送Eif给CAVi-1，便于后面计算error_dual2和tolerance_dual2
         
-        # if cav_id != 0:
-        #     epsilon_bar = Eif@g_plus
-        #     rs.mset({f'epsilon_bar_{cav_id}_{timestep}_{k}':pickle.dumps(epsilon_bar)})
+        if Com_way == 2:
+            if cav_id != 0:
+                epsilon_bar = Eif@g_plus
+                rs.mset({f'epsilon_bar_{cav_id}_{timestep}_{k}':pickle.dumps(epsilon_bar)})
 
-        # if cav_id != n_cav-1:
-        #     while True:
-        #         if rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0] != None:
-        #             epsilon_bar_latter_0 = pickle.loads(rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0])
-        #             break
+            if cav_id != n_cav-1:
+                while True:
+                    if rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0] != None:
+                        epsilon_bar_latter = pickle.loads(rs.mget(f'epsilon_bar_{cav_id+1}_{timestep}_{k}')[0])
+                        break
+        elif Com_way == 1:
+            if cav_id != 0:
+                epsilon_bar = Eif@g_plus
+                send_data(prev_host,my_port,{'type':f'epsilon_bar_{cav_id}_{timestep}_{k}','data':epsilon_bar})
 
-        if prev_port:
-            epsilon_bar = Eif@g_plus
-            send_data(prev_host,prev_port,{'type':f'epsilon_bar_{cav_id}_{timestep}_{k}','data':epsilon_bar})
-
-        if next_host:
-            epsilon_bar_latter = get_data_by_type(data_queue, f'epsilon_bar_{cav_id+1}_{timestep}_{k}')
-            # print(np.allclose(epsilon_bar_latter_0,epsilon_bar_latter),flush=True)
+            if cav_id != n_cav-1:
+                epsilon_bar_latter = get_data_by_type(data_queue, f'epsilon_bar_{cav_id+1}_{timestep}_{k}')
         
         # update
         if cav_id != n_cav-1:
@@ -239,16 +245,24 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
                 # print(f'check:calculation {time.time()-start_time_check}',flush=True)
 
-                if error_pri0 <= tolerance_pri0 and error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri2 <= tolerance_pri2 and error_dual2 <= tolerance_dual2 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
-                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
-                    # for host, port in zip(other_host,other_port):
-                    #     send_data(host, port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':True})
-                else:
-                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
-                    # for host, port in zip(other_host,other_port):
-                    #     send_data(host, port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':False})
-
+                if Com_way == 2:
+                    if error_pri0 <= tolerance_pri0 and error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri2 <= tolerance_pri2 and error_dual2 <= tolerance_dual2 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                        rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
+                    else:
+                        rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
+                        
+                elif Com_way == 1:
+                    if error_pri0 <= tolerance_pri0 and error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri2 <= tolerance_pri2 and error_dual2 <= tolerance_dual2 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                        for host in other_host:
+                            send_data(host, my_port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':True})
+                        my_flag = True
+                    else:
+                        for host in other_host:
+                            send_data(host, my_port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':False})
+                        my_flag = False
+                
                 # print(f'check:send {time.time()-start_time_check}',flush=True)
+                # print(f'rollout_flag_{cav_id}_{timestep}_{k} send.',flush=True)
 
             eta = eta_plus
 
@@ -297,16 +311,26 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
                 # print(f'check:calculation {time.time()-start_time_check}',flush=True)
 
-                if error_pri0 <= tolerance_pri0 and error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
-                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
-                    # for host, port in zip(other_host,other_port):
-                    #     send_data(host, port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':True})
-                else:
-                    rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
-                    # for host, port in zip(other_host,other_port):
-                    #     send_data(host, port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':False})
+                if Com_way == 2:
+                    if error_pri0 <= tolerance_pri0 and error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                        rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(1)})
+                        
+                    else:
+                        rs.mset({f'rollout_flag_{cav_id}_{timestep}_{k}':pickle.dumps(0)})
+                        
+                elif Com_way == 1:
+                    if error_pri0 <= tolerance_pri0 and error_pri1 <= tolerance_pri1 and error_dual1 <= tolerance_dual1 and error_pri3 <= tolerance_pri3 and error_dual3 <= tolerance_dual3 and error_pri4 <= tolerance_pri4 and error_dual4 <= tolerance_dual4:
+                        for host in other_host:
+                            send_data(host, my_port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':True})
+                        my_flag = True
+                    else:
+                        for host in other_host:
+                            send_data(host, my_port, {'type':f'rollout_flag_{cav_id}_{timestep}_{k}','data':False})
+                        my_flag = False
+        
                 
                 # print(f'check:send {time.time()-start_time_check}',flush=True)
+                # print(f'rollout_flag_{cav_id}_{timestep}_{k} send.',flush=True)
 
         # Step3: error计算完毕，可以由main-server检查stop criteria是否满足
         # error和tolerance计算完成后，将check_ready标为1，表示该容器已经上传好信息，等待停止迭代信号
@@ -323,31 +347,49 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
             break
         else:
             if Is_Check:
-                while True:
-                    check_flag_bytes=rs.mget(f'rollout_flag_total_{timestep}_{k}')[0]
-                    if check_flag_bytes==None:
-                            continue
-                    else:
-                        check_flag = pickle.loads(check_flag_bytes)
+                if Com_way == 2:
+                    while True:
+                        check_flag_bytes=rs.mget(f'rollout_flag_total_{timestep}_{k}')[0]
+                        if check_flag_bytes==None:
+                                continue
+                        else:
+                            check_flag = pickle.loads(check_flag_bytes)
+                            break
+
+                    if check_flag == 0:
+                        continue
+                    elif check_flag==1:
                         break
+                elif Com_way == 1:
 
-                if check_flag == 0:
-                    continue
-                elif check_flag==1:
-                    break
-                # start_time_receive = time.time()
-                # check_flag = []
-                # for i in range(n_cav):
-                #     if i != cav_id:
-                #         check_flag.append(get_data_by_type(data_queue, f'rollout_flag_{i}_{timestep}_{k}'))
-                
-                # if cav_id == n_cav-1:
-                #     print(f'check:receive {time.time()-start_time_receive}',flush=True)
+                    while True:
+                        check_flag = []
+                        for i in range(n_cav):
+                            if i != cav_id:
+                                flag = get_data_by_type(data_queue, f'rollout_flag_{i}_{timestep}_{k}')
+                                check_flag.append(flag)
+                            else:
+                                check_flag.append(my_flag)
+                        
+                        # print(check_flag,flush=True)
+                        if False in check_flag:
+                            iter_flag = 0
+                            # if cav_id == n_cav-1:
+                            # print(check_flag,flush=True)
+                            break
+                        elif all(var == True for var in check_flag):
+                            iter_flag = 1
+                            break
+                        else:
+                            continue
 
-                # if False in check_flag:
-                #     continue
-                # else:
-                #     break
+                    if iter_flag == 1:
+                        # print(f' {timestep}_{k} I break.',flush=True)
+                        break
+                    else:
+                        # print(f' {timestep}_{k} I continue.',flush=True)
+                        continue
+
             else:
                 continue
 
