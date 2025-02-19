@@ -360,6 +360,7 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
                         continue
                     elif check_flag==1:
                         break
+
                 elif Com_way == 1:
 
                     while True:
@@ -645,7 +646,6 @@ class SubsystemSolver(SubsystemParam):
             f'Ri_in_CAV_{self.cav_id}',
             f'K_in_CAV_{self.cav_id}',
             f'P_in_CAV_{self.cav_id}',
-            f'M_vert_in_CAV_{self.cav_id}',
             f'acel_max',
             f'dcel_max',
             f's_max',
@@ -663,7 +663,7 @@ class SubsystemSolver(SubsystemParam):
             self.lambda_yi, lambda_gi_max, lambda_gi_min, self.rho,
             g_initial, mu_initial, eta_initial, phi_initial, theta_initial, delta_initial,
             Su, Sy, Se, 
-            n_cav, k_on, Qi_stack, Ri_stack, K, P, M_vert,
+            n_cav, k_on, Qi_stack, Ri_stack, K, P, 
             self.acel_max, self.dcel_max, self.spacing_max, self.spacing_min, self.s_star, Tstep
         ) = [pickle.loads(value) for value in values]
 
@@ -828,9 +828,32 @@ class SubsystemSolver(SubsystemParam):
             # time_hz_start = time.time()
             # Hz_vert = np.linalg.pinv(Hz)
             # print(f"Hz_vert consume{time.time()-time_hz_start}", flush=True)
+            [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
 
-        [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
-        
+        elif ~Hankel_update_flag:
+            lambda_gi = np.full(kappa, lambda_gi_max)
+            if curr_step == 0:
+                M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
+                H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
+
+                # Hgi_vert
+                Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
+                Hgi_vert = np.linalg.inv(Hgi)
+                
+                rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
+                
+                # Hzi_vert
+                if self.cav_id != n_cav-1:
+                    Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                    Hz_vert = np.linalg.inv(Hz)
+                else:
+                    Hz_vert = (2/self.rho)*np.eye(int(kappa))
+                
+                rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+            else:
+                Hgi_vert = pickle.loads(rs.mget(f'Hgi_vert_in_CAV_{self.cav_id}')[0])
+                Hz_vert = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
+
         
         # 调用deepc
         u_opt,g_opt,mu_opt,eta_opt,phi_opt,theta_opt,delta_opt,real_iter_num = dDeeP_LCC(Tini,N,kappa,curr_step,n_cav,self.cav_id,self.Uip,self.Yip,self.Uif,\
@@ -858,10 +881,10 @@ class SubsystemSolver(SubsystemParam):
         }) 
 
         # cost
-        y_cost = (self.Yif@g_opt).T@Qi_stack@(self.Yif@g_opt)
-        u_cost = (u_opt).T@Ri_stack@(u_opt)
-        gi_cost = lambda_gi*g_opt.T@g_opt
-        sig_yi_cost = self.lambda_yi*(self.Yip@g_opt-(self.yini.T).reshape(-1)).T@(self.Yip@g_opt-(self.yini.T).reshape(-1))
+        # y_cost = (self.Yif@g_opt).T@Qi_stack@(self.Yif@g_opt)
+        # u_cost = (u_opt).T@Ri_stack@(u_opt)
+        # gi_cost = lambda_gi*g_opt.T@g_opt
+        # sig_yi_cost = self.lambda_yi*(self.Yip@g_opt-(self.yini.T).reshape(-1)).T@(self.Yip@g_opt-(self.yini.T).reshape(-1))
         # print(f'y/u/gi/sig_yi cost:{y_cost}/{u_cost}/{gi_cost}/{sig_yi_cost}',flush=True)
 
         # print("111",flush=True)

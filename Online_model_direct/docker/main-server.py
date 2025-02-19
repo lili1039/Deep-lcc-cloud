@@ -5,6 +5,10 @@ import asyncio
 
 Is_Check = True
 
+# communication
+Com_way = 2
+# 1:TCP 2:Redis
+
 if __name__ =="__main__":
     '''初始化数据库连接:'''
     # 用终端查询键值的时候命令为 redis-cli -n 2(dataset的编号)
@@ -21,9 +25,9 @@ if __name__ =="__main__":
     k_copy = 0
     iteration_num = 10
 
-    if Is_Check:
+    if Is_Check and Com_way == 2:
         while True:
-            if timestep_copy >= 800-70:
+            if timestep_copy >= 600-60:
                 while True:
                     value = rs.mget(f'timestep_copy')[0]
                     if value != None:
