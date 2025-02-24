@@ -16,13 +16,13 @@ Inv_method = 2
 # 1: Inv by Recursion 2: Inv by numpy
 
 # check stopping criteria
-Is_Check =  True
+Is_Check =  True # 要在main-server.py对应改一下
 
 # communication
 Com_way = 2
 # 1:TCP 2:Redis
 
-iteration_num = 10
+iteration_num = 10 # 要在main-server.py对应改一下
 
 def send_data(host, port, data, max_retries=100, retry_interval=1):
     """向指定地址和端口的 TCP 服务器发送数据，若连接失败则不断重试"""
@@ -610,15 +610,6 @@ class SubsystemSolver(SubsystemParam):
         curr_step            = msg_recv[5]
         Hankel_update_flag   = msg_recv[6]
 
-        # my_port = 5005 + self.cav_id
-        # stop_event = threading.Event()
-        # data_queue = queue.Queue()  # 🛠 用于存储接收到的数据
-
-        # # ✅ **启动后台线程，持续监听 my_port**
-        # receiver_thread = threading.Thread(target=receive_data, args=(my_port, stop_event, data_queue))
-        # receiver_thread.daemon = True  
-        # receiver_thread.start()
-
         # 从数据库获取初始参数和数据
         keys = [
             f'Uip_in_CAV_{self.cav_id}',
@@ -693,8 +684,6 @@ class SubsystemSolver(SubsystemParam):
                 else: 
                     result = Hankel_substitute_col_2(Tini,N,int(k_on[self.cav_id]),Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)         
 
-                # print(f'2substitute {time.time()-start_time}',flush=True)
-
                 # calculate inverse of matrices Hgi and Hz
                 if Inv_method == 2 or curr_step == 0: # inverse by numpy
                     [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
@@ -706,41 +695,14 @@ class SubsystemSolver(SubsystemParam):
                     lambda_gi = np.concatenate((np.full(off_col, lambda_gi_max), lambda_gi_on[:kappa-off_col]))
                     Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
                     Hgi_vert = np.linalg.inv(Hgi)
-
-                    # print(f'3inv1 {time.time()-start_time}',flush=True)
-
-                    # Woodbury computational method
-                    # lambda_gi = np.concatenate((np.full(off_col, lambda_gi_max), lambda_gi_on[:kappa-off_col]))
-                    # # A = (lambda_gi+self.rho/2)*np.eye(kappa) 
-                    # # A_vert = np.linalg.pinv(A)
-                    
-                    # A_vert = np.diag(1/(lambda_gi+self.rho/2))
-                    # temp = M_vert+H@A_vert@H.T
-                    # Mmid_vert = np.linalg.inv(temp)
-                    # Hgi_vert = A_vert - A_vert@H.T@Mmid_vert@H@A_vert
-
-                    # print('Hgi True?',np.allclose(Hgi_vert_0,Hgi_vert))
-                    # Hgi_vert = Hgi_vert_0
-        
-                    # print(f"Hgi_vert consume{time.time()-time_hgi_start}", flush=True)
-                    # print('Hgi cond',np.linalg.cond(Hgi))
-                    
-                    # rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
                     
                     # Hz_vert
                     if self.cav_id != n_cav-1:
-                        # Hz_vert = (2/self.rho)*(np.eye(kappa)-self.Yif.T@K.T@np.linalg.inv(np.eye(N)+K@self.Yif@self.Yif.T@K.T)@K@self.Yif)
-
                         Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
                         Hz_vert = np.linalg.inv(Hz)
 
-                        # print(f'3inv2 {time.time()-start_time}',flush=True)
-
-                        # print(np.allclose(Hz_vert_0,Hz_vert))
-                        # rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
                     else:
                         Hz_vert = (2/self.rho)*np.eye(int(kappa))
-                        # rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
                     
                 elif Inv_method == 1: # inverse by recursion
                     H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
@@ -756,12 +718,6 @@ class SubsystemSolver(SubsystemParam):
                         Hgi_vert = Matrix_inv_phase2(c,M,H,self.rho/2+lambda_gi,Hgi_vert_last,kappa,int(k_on[self.cav_id]),self.cav_id,rs)
                         rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
 
-                        # [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
-                        # H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
-                        # Hgi_2 = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
-                        # Hgi_vert_2 = np.linalg.inv(Hgi_2)
-                        # print("PHASE 2 Results close?", np.allclose(Hgi_vert_2, Hgi_vert), flush=True)
-
                     # Hz_vert
                     if self.cav_id != n_cav-1:
                         Hz_vert_last = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
@@ -770,16 +726,10 @@ class SubsystemSolver(SubsystemParam):
                         if off_col > k_on[self.cav_id]:
                             Hz_vert = Matrix_inv_phase1(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa)
                             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
-                            # Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-                            # Hz_vert = np.linalg.pinv(Hz)
                         else:
                             Hz_vert = Matrix_inv_phase2(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa,int(k_on[self.cav_id]),self.cav_id,rs)
                             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
-                            # Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-                            # Hz_vert = np.linalg.pinv(Hz)
-                        # print('Hz cond,', np.linalg.cond(Hz_vert))
                     else:
-                        # Hz = self.rho/2*np.eye(int(kappa))
                         Hz_vert = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
             
             elif Hankel_update_method == 2:
@@ -797,37 +747,7 @@ class SubsystemSolver(SubsystemParam):
                     Hz_vert = np.linalg.pinv(Hz)
                 else:
                     Hz_vert = (2/self.rho)*np.eye(int(kappa))
-                # rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
             
-            # # Hz_vert
-            # if self.cav_id != n_cav-1:
-            #     if curr_step == 0:
-            #         [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
-            #         Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-            #         Hz_vert = np.linalg.pinv(Hz)
-            #         rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
-            #     else:
-            #         Hz_vert_last = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
-            #         H_2 = self.Yif
-            #         M_2 = K.T@K
-            #         if off_col > k_on[self.cav_id]:
-            #             Hz_vert = Matrix_inv_phase1(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa)
-            #             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
-            #             Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-            #             Hz_vert = np.linalg.pinv(Hz)
-            #         else:
-            #             Hz_vert = Matrix_inv_phase2(c[-p*N:],M_2,H_2,self.rho/2,Hz_vert_last,kappa,int(k_on[self.cav_id]))
-            #             rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
-            #             Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-            #             Hz_vert = np.linalg.pinv(Hz)
-            #         print('Hz cond,', np.linalg.cond(Hz_vert))
-            # else:
-            #     # Hz = self.rho/2*np.eye(int(kappa))
-            #     Hz_vert = (2/self.rho)*np.eye(int(kappa))
-
-            # time_hz_start = time.time()
-            # Hz_vert = np.linalg.pinv(Hz)
-            # print(f"Hz_vert consume{time.time()-time_hz_start}", flush=True)
             [self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,g_initial,mu_initial,c] = result
 
         elif ~Hankel_update_flag:
@@ -863,8 +783,6 @@ class SubsystemSolver(SubsystemParam):
         use_time = time.time() - start_time
         print(f"total computation time: {use_time}",flush=True)
 
-        # print(f'5deepc {time.time()-start_time}',flush=True)
-        # save initial value of dual variables for next timestep
         rs.mset({
             f'g_initial_in_CAV_{self.cav_id}': pickle.dumps(g_opt),
             f'mu_initial_in_CAV_{self.cav_id}': pickle.dumps(mu_opt),
@@ -886,14 +804,6 @@ class SubsystemSolver(SubsystemParam):
         # gi_cost = lambda_gi*g_opt.T@g_opt
         # sig_yi_cost = self.lambda_yi*(self.Yip@g_opt-(self.yini.T).reshape(-1)).T@(self.Yip@g_opt-(self.yini.T).reshape(-1))
         # print(f'y/u/gi/sig_yi cost:{y_cost}/{u_cost}/{gi_cost}/{sig_yi_cost}',flush=True)
-
-        # print("111",flush=True)
-
-        # 结束监听
-        # stop_event.set()
-        # receiver_thread.join()
-
-        # print("222",flush=True)
 
         # give messages to clients
         msg_send = [u_opt[0],real_iter_num,use_time]

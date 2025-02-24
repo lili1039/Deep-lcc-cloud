@@ -13,8 +13,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "12.0"  # 使用最多 12 个 CPU 核心
-    cpuset: "0-11"  # 分配第 0 到 11 核心
+          cpus: "6.0"  # 使用最多 12 个 CPU 核心
+    cpuset: "0-5"  # 分配第 0 到 11 核心
     networks:
       - veh_network
 
@@ -30,8 +30,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "12.0"
-    cpuset: "12-23"
+          cpus: "6.0"
+    cpuset: "6-11"
     networks:
       - veh_network
 
@@ -47,8 +47,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "12.0" 
-    cpuset: "24-35"
+          cpus: "6.0" 
+    cpuset: "12-17"
     networks:
       - veh_network
 
@@ -64,8 +64,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "12.0"
-    cpuset: "36-47"
+          cpus: "6.0"
+    cpuset: "18-23"
     networks:
       - veh_network
 
@@ -81,8 +81,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "12.0"
-    cpuset: "48-59"
+          cpus: "6.0"
+    cpuset: "24-29"
     networks:
       - veh_network
 

@@ -3,7 +3,7 @@ import redis
 import numpy as np
 import asyncio
 
-Is_Check = True
+Is_Check = True # 是否检查迭代停止条件
 
 # communication
 Com_way = 2
@@ -27,7 +27,7 @@ if __name__ =="__main__":
 
     if Is_Check and Com_way == 2:
         while True:
-            if timestep_copy >= 600-60:
+            if timestep_copy >= 600-60: #600：总步数 60：收集数据阶段用的时长(Tini+N)
                 while True:
                     value = rs.mget(f'timestep_copy')[0]
                     if value != None:
