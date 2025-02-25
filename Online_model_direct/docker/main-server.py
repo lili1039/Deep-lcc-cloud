@@ -23,7 +23,7 @@ if __name__ =="__main__":
     # 各自检查
     timestep_copy = 0
     k_copy = 0
-    iteration_num = 10
+    iteration_num = 300
 
     if Is_Check and Com_way == 2:
         while True:

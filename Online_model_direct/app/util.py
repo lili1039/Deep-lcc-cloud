@@ -22,7 +22,7 @@ Is_Check =  True # 要在main-server.py对应改一下
 Com_way = 2
 # 1:TCP 2:Redis
 
-iteration_num = 10 # 要在main-server.py对应改一下
+iteration_num = 300 # 要在main-server.py对应改一下
 
 def send_data(host, port, data, max_retries=100, retry_interval=1):
     """向指定地址和端口的 TCP 服务器发送数据，若连接失败则不断重试"""
@@ -85,7 +85,7 @@ def get_data_by_type(data_queue, desired_type):
 def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,delta_initial,lambda_yi,u_limit,s_limit,rho,Hgi_vert,Hz_vert,rs,data_queue):
 
     # stoping criterion
-    error_absolute = 0.1
+    error_absolute = 0.1  # 0.1
     error_relative = 1e-3 # 1e-3
 
     # problem size
