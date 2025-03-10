@@ -629,7 +629,7 @@ class SubsystemSolver(SubsystemParam):
     def __init__(self):
         super().__init__()
 
-    async def solver(self,websocket, path, data_queue):
+    async def solver(self,websocket, data_queue):
         # 数据库连接
         rs = redis.StrictRedis(host='172.18.0.1',port=6379,db=2,password="chlpw1039") 
 
