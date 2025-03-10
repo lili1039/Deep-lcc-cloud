@@ -13,8 +13,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "10.0"  
-    cpuset: "0-9"  
+          cpus: "11.0"  
+    cpuset: "0-10"  
     networks:
       - veh_network
 
@@ -30,8 +30,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "10.0"
-    cpuset: "10-19"
+          cpus: "11.0"
+    cpuset: "11-21"
     networks:
       - veh_network
 
@@ -47,8 +47,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "10.0" 
-    cpuset: "20-29"
+          cpus: "11.0" 
+    cpuset: "22-32"
     networks:
       - veh_network
 
@@ -64,8 +64,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "10.0"
-    cpuset: "30-39"
+          cpus: "11.0"
+    cpuset: "33-43"
     networks:
       - veh_network
 
@@ -81,8 +81,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "10.0"
-    cpuset: "40-49"
+          cpus: "11.0"
+    cpuset: "44-54"
     networks:
       - veh_network
 

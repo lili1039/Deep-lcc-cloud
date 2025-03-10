@@ -57,7 +57,6 @@ if __name__ =="__main__":
                     if None not in error_bytes:
                         for value in error_bytes:
                             error_sum = error_sum + (pickle.loads(value))
-                        # print(f"all error collected {timestep_copy} {k_copy}")
                         break
 
                 while True:
@@ -65,7 +64,6 @@ if __name__ =="__main__":
                     if None not in tolerence_bytes:
                         for value in tolerence_bytes:
                             tolerence_sum = tolerence_sum + (pickle.loads(value))
-                        # print(f"all tolerence collected {timestep_copy} {k_copy}")
                         break
                 
                 # print("here")
@@ -82,8 +80,6 @@ if __name__ =="__main__":
                         rs.mset({f'rho_{timestep_copy}_{k_copy}':pickle.dumps(2)})
                     else:
                         rs.mset({f'rho_{timestep_copy}_{k_copy}':pickle.dumps(0)})
-
-                    # print("0")
                     k_copy = k_copy+1
                     break
                 elif k_copy == iteration_num - 1:
@@ -91,8 +87,6 @@ if __name__ =="__main__":
                     k_copy = 0
                     timestep_copy = timestep_copy + 1
                     rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
-
-                    # print("1")
                     break
                 elif np.all(error_sum<tolerence_sum):
                     rs.mset({f'rollout_flag_total_{timestep_copy}_{k_copy}':pickle.dumps(1)})
@@ -100,8 +94,6 @@ if __name__ =="__main__":
                     k_copy = 0
                     timestep_copy = timestep_copy + 1
                     rs.mset({f'timestep_copy':pickle.dumps(timestep_copy)})
-
-                    # print("2")
                     break
 
 
