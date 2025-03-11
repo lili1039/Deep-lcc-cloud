@@ -680,29 +680,29 @@ class SubsystemSolver(SubsystemParam):
                 #         f'Eif_in_CAV_{self.cav_id}': pickle.dumps(self.Eif)
                 #     })
         
-        # elif ~Hankel_update_flag:
-        #     lambda_gi = np.full(kappa, lambda_gi_max)
-        #     if curr_step == 0:
-        #         # M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
-        #         H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
+        elif ~Hankel_update_flag:
+            lambda_gi = np.full(kappa, lambda_gi_max)
+            if curr_step == 0:
+                # M = block_diag(self.rho/2*np.eye(Tini),self.rho/2*np.eye(Tini),self.lambda_yi*np.eye(p*Tini),Ri_stack+self.rho/2*np.eye(N),self.rho/2*np.eye(N),Qi_stack+self.rho/2*P.T@P)
+                H = np.vstack((self.Uip,self.Eip,self.Yip,self.Uif,self.Eif,self.Yif))
 
-        #         # Hgi_vert
-        #         Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
-        #         Hgi_vert = np.linalg.inv(Hgi)
+                # Hgi_vert
+                Hgi = H.T@M@H + (self.rho/2+lambda_gi)*np.eye(kappa)
+                Hgi_vert = np.linalg.inv(Hgi)
                 
-        #         rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
+                rs.mset({f'Hgi_vert_in_CAV_{self.cav_id}':pickle.dumps(Hgi_vert)})
                 
-        #         # Hzi_vert
-        #         if self.cav_id != n_cav-1:
-        #             Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
-        #             Hz_vert = np.linalg.inv(Hz)
-        #         else:
-        #             Hz_vert = (2/self.rho)*np.eye(int(kappa))
+                # Hzi_vert
+                if self.cav_id != n_cav-1:
+                    Hz = self.rho/2*np.eye(int(kappa))+self.rho/2*self.Yif.T@K.T@K@self.Yif
+                    Hz_vert = np.linalg.inv(Hz)
+                else:
+                    Hz_vert = (2/self.rho)*np.eye(int(kappa))
                 
-        #         rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
-        #     else:
-        #         Hgi_vert = pickle.loads(rs.mget(f'Hgi_vert_in_CAV_{self.cav_id}')[0])
-        #         Hz_vert = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
+                rs.mset({f'Hz_vert_in_CAV_{self.cav_id}':pickle.dumps(Hz_vert)})
+            else:
+                Hgi_vert = pickle.loads(rs.mget(f'Hgi_vert_in_CAV_{self.cav_id}')[0])
+                Hz_vert = pickle.loads(rs.mget(f'Hz_vert_in_CAV_{self.cav_id}')[0])
 
         
         # 调用deepc
