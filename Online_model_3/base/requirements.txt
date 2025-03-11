@@ -6,3 +6,6 @@ asyncio
 pandas
 pmdarima
 statsmodels
+scipy
+line_profiler
+memory_profiler

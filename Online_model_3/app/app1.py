@@ -51,11 +51,14 @@ if __name__ == "__main__":
     # 监听本地主机的 6000 端口;host (第2个参数）是服务器监听的主机名或 IP 地址
     # start_server = websockets.serve(Subsystem.solver, f"veh-{Subsystem.cav_id}", 6000, loop=loop)
 
-    start_server = websockets.serve(
-        functools.partial(Subsystem.solver, data_queue=data_queue),  
-        f"veh-{Subsystem.cav_id}", 6000, loop=loop
-    )
+    async def server_start():
+        server = await websockets.serve(
+            functools.partial(Subsystem.solver, data_queue=data_queue),
+            f"veh-{Subsystem.cav_id}", 6000
+        )
+        return server
+
     # 在事件循环中启动服务器
-    loop.run_until_complete(start_server)
+    loop.run_until_complete(server_start())
     # 一直运行服务器，直到手动停止
     loop.run_forever()

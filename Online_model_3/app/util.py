@@ -6,9 +6,9 @@ import math
 import websockets
 from scipy.linalg import block_diag 
 import socket
-import threading
 import queue
 from scipy.sparse import csr_matrix
+# from line_profiler import profile
 
 # update method
 Hankel_update_method = 1
@@ -83,25 +83,31 @@ def get_data_by_type(data_queue, desired_type):
             print("队列为空，等待数据...",flush=True)
             continue
 
+# @profile
 def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,yi_ini,ei_ini,g_initial,mu_initial,eta_initial,phi_initial,theta_initial,delta_initial,lambda_yi,u_limit,s_limit,rho,Hgi_vert,Hz_vert,K,P,rs,data_queue):
 
     # stoping criterion
     error_absolute = 0.1  # 0.1
-    error_relative = 0.05 # 1e-3
+    error_relative = 0.01 # 1e-3
 
     # problem size
     m = ui_ini.ndim         # the size of control input of each subsystem
     p = yi_ini.shape[0]     # the size of output of each subsystem
 
     # transpose
-    K_T = K.T
-    P_T = P.T
-    Yif_T = Yif.T
+    # K_T = K.T
+    # P_T = P.T
+    # Yif_T = Yif.T
     Yip_T = Yip.T
     Uif_T = Uif.T
     Eif_T = Eif.T
     K_sparse = csr_matrix(K)
     P_sparse = csr_matrix(P)
+
+    K_Yif = K_sparse.dot(Yif)
+    YifT_KT = (K_Yif).T
+    P_Yif = P_sparse.dot(Yif)
+    YifT_PT = (P_Yif).T
 
     if cav_id == 0:
         Agi = np.vstack((Uip,Eip,Eif))
@@ -113,11 +119,14 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
     ui_ini = ui_ini.reshape(m*Tini,order='F')       #一维数组
     yi_ini= yi_ini.reshape(p*Tini,order='F')        #一维数组
     ei_ini = ei_ini.reshape(Tini,order='F')         #一维数组
+    lam_Yip_yini = lambda_yi*Yip_T@yi_ini
 
     if cav_id == 0:
         beqg = np.hstack((ui_ini,ei_ini,np.zeros(N)))  #一维数组
+        AgiT_beqg = Agi_T@beqg
     else:
         beqg = np.hstack((ui_ini,ei_ini))              #一维数组
+        AgiT_beqg = Agi_T@beqg
 
     # initial value for variables
     g = g_initial
@@ -127,7 +136,7 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
     phi = phi_initial
     theta = theta_initial
     delta = delta_initial
-    s=P_sparse.dot(Yif).dot(g)       #一维数组
+    s=P_Yif.dot(g)       #一维数组
     u=Uif@g         #一维数组
 
     # 计算当前容器的端口
@@ -143,7 +152,7 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
         if Com_way == 2:
             if cav_id != n_cav-1:
-                eta_bar = eta - rho*K_sparse.dot(Yif).dot(z)
+                eta_bar = eta - rho*K_Yif.dot(z)
                 rs.mset({f'eta_bar_{cav_id}_{timestep}_{k}':pickle.dumps(eta_bar)})
 
             if cav_id != 0:
@@ -154,7 +163,7 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
         elif Com_way == 1:
             if cav_id != n_cav-1:
-                eta_bar = eta - rho * K_sparse.dot(Yif).dot(z)
+                eta_bar = eta - rho * K_Yif.dot(z)
                 send_data(next_host, my_port, {'type':f'eta_bar_{cav_id}_{timestep}_{k}','data':eta_bar})
 
             if cav_id != 0:
@@ -162,11 +171,11 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
         # 计算qg
         if cav_id == 0:
-            qg = -lambda_yi*Yip_T@yi_ini + mu/2 - rho*z/2 - \
-                Yif_T@P_T@phi/2 - Uif_T@theta/2 - rho*Yif_T@P_T@s/2 - rho*Uif_T@u/2 + 1/2*Agi_T@delta - rho/2*Agi_T@beqg
+            qg = -lam_Yip_yini + mu/2 - rho*z/2 - \
+                YifT_PT.dot(phi)/2 - Uif_T@theta/2 - rho*YifT_PT.dot(s)/2 - rho*Uif_T@u/2 + 1/2*Agi_T@delta - rho/2*AgiT_beqg
         else:
-            qg = -lambda_yi*Yip_T@yi_ini + mu/2 - rho*z/2 + Eif_T@eta_bar_former/2 - \
-                Yif_T@P_T@phi/2 - Uif_T@theta/2 - rho*Yif_T@P_T@s/2 - rho*Uif_T@u/2 + 1/2*Agi_T@delta - rho/2*Agi_T@beqg
+            qg = -lam_Yip_yini + mu/2 - rho*z/2 + Eif_T@eta_bar_former/2 - \
+                YifT_PT.dot(phi)/2 - Uif_T@theta/2 - rho*YifT_PT.dot(s)/2 - rho*Uif_T@u/2 + 1/2*Agi_T@delta - rho/2*AgiT_beqg
             
         # 计算g+
         g_plus = -Hgi_vert@qg
@@ -197,10 +206,10 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
         # update
         if cav_id != n_cav-1:
             qz = -mu/2 - rho/2*g_plus - \
-                Yif_T@K_T@eta/2 -rho/2*Yif_T@K_T@epsilon_bar_latter
+                YifT_KT.dot(eta)/2 -rho/2*YifT_KT.dot(epsilon_bar_latter)
             z_plus = -Hz_vert@qz
             
-            s_temp = P_sparse.dot(Yif).dot(g_plus) - phi/rho
+            s_temp = P_Yif.dot(g_plus) - phi/rho
             # s_plus = np.minimum(np.maximum(s_temp,s_limit[0]*np.ones(N)),s_limit[1]*np.ones(N)) # projection in the box constraint
             s_plus = s_temp.clip(min=s_limit[0],max=s_limit[1])
 
@@ -210,9 +219,9 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
             res_mu = g_plus-z_plus
             mu_plus = mu + rho*(res_mu)
-            res_eta = epsilon_bar_latter-K_sparse.dot(Yif).dot(z_plus)
+            res_eta = epsilon_bar_latter-K_Yif.dot(z_plus)
             eta_plus = eta + rho*(res_eta)
-            res_phi = s_plus - P_sparse.dot(Yif).dot(g_plus)
+            res_phi = s_plus - P_Yif.dot(g_plus)
             phi_plus = phi + rho*(res_phi)
             res_theta = u_plus - Uif@g_plus
             theta_plus = theta + rho*(res_theta)
@@ -231,11 +240,11 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
                 error_pri2 = np.linalg.norm(res_eta)
             
                 Eif_latter = pickle.loads(rs.mget(f'Eif_in_CAV_{cav_id+1}')[0])
-                error_dual2 = rho*np.linalg.norm(Eif_latter.T@K@Yif@(z_plus-z))
+                error_dual2 = rho*np.linalg.norm(Eif_latter.T@K_Yif.dot(z_plus-z))
 
                 error_pri3 = np.linalg.norm(res_phi)
             
-                error_dual3 = rho*np.linalg.norm(Yif_T@P_T@(s_plus-s))
+                error_dual3 = rho*np.linalg.norm(YifT_PT.dot(s_plus-s))
                 
                 error_pri4 =  np.linalg.norm(res_theta)
             
@@ -253,13 +262,13 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
                 tolerence_dual1 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(mu_plus)
 
                 tolerence_pri2 = math.sqrt(N)*error_absolute + \
-                    error_relative*max(np.linalg.norm(epsilon_bar_latter),np.linalg.norm(K@Yif@z_plus))
+                    error_relative*max(np.linalg.norm(epsilon_bar_latter),np.linalg.norm(K_Yif.dot(z_plus)))
 
                 tolerence_dual2 = math.sqrt(N)*error_absolute + error_relative*np.linalg.norm(Eif_latter.T@eta_plus)  
 
-                tolerence_pri3 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P@Yif@g_plus))
+                tolerence_pri3 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P_Yif.dot(g_plus)))
 
-                tolerence_dual3 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Yif_T@P_T@phi_plus)
+                tolerence_dual3 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(YifT_PT.dot(phi_plus))
 
                 tolerence_pri4 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
 
@@ -274,15 +283,17 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
             qz = -mu/2 - rho/2*g_plus
             z_plus = -Hz_vert@qz
                 
-            s_temp = P@Yif@g_plus - phi/rho
-            s_plus = np.minimum(np.maximum(s_temp,s_limit[0]*np.ones(N)),s_limit[1]*np.ones(N)) # projection in the box constraint
+            s_temp = P_Yif.dot(g_plus) - phi/rho
+            # s_plus = np.minimum(np.maximum(s_temp,s_limit[0]*np.ones(N)),s_limit[1]*np.ones(N)) # projection in the box constraint
+            s_plus = s_temp.clip(min=s_limit[0],max=s_limit[1])
 
             u_temp = Uif@g_plus-theta/rho
-            u_plus = np.minimum(np.maximum(u_temp,u_limit[0]*np.ones(N)),u_limit[1]*np.ones(N)) # projection in the box constraint
+            # u_plus = np.minimum(np.maximum(u_temp,u_limit[0]*np.ones(N)),u_limit[1]*np.ones(N)) # projection in the box constraint
+            u_plus = u_temp.clip(min=u_limit[0],max=u_limit[1])
 
             res_mu = g_plus-z_plus
             mu_plus = mu + rho*(res_mu)
-            res_phi = s_plus - P@Yif@g_plus
+            res_phi = s_plus - P_Yif.dot(g_plus)
             phi_plus = phi + rho*(res_phi)
             res_theta = u_plus - Uif@g_plus
             theta_plus = theta + rho*(res_theta)
@@ -300,7 +311,7 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
 
                 error_pri3 = np.linalg.norm(res_phi)
 
-                error_dual3 = rho*np.linalg.norm(Yif_T@P_T@(s_plus-s))
+                error_dual3 = rho*np.linalg.norm(YifT_PT.dot(s_plus-s))
 
                 error_pri4 =  np.linalg.norm(res_theta)
 
@@ -316,11 +327,10 @@ def dDeeP_LCC(Tini,N,kappa,timestep,n_cav,cav_id,Uip,Yip,Uif,Yif,Eip,Eif,ui_ini,
                     error_relative*max(np.linalg.norm(g_plus),np.linalg.norm(z_plus))
                 
                 tolerence_dual1 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(mu_plus)
-                # rs.mset({f'tolerence_dual1_{cav_id}_{timestep}_{k}':pickle.dumps(tolerence_dual1)})
             
-                tolerence_pri3 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P@Yif@g_plus))
+                tolerence_pri3 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(s_plus),np.linalg.norm(P_Yif.dot(g_plus)))
             
-                tolerence_dual3 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(Yif_T@P_T@phi_plus)
+                tolerence_dual3 = math.sqrt(kappa)*error_absolute + error_relative*np.linalg.norm(YifT_PT.dot(phi_plus))
 
                 tolerence_pri4 = math.sqrt(N)*error_absolute + error_relative*max(np.linalg.norm(Uif@g_plus),np.linalg.norm(u_plus))
             
@@ -576,24 +586,38 @@ class SubsystemSolver(SubsystemParam):
         lambda_gi_online = np.linspace(lambda_gi_max, lambda_gi_min, int(kappa_max-k_on[self.cav_id]))
         # print(f'1prepare {time.time()-start_time}',flush=True)
 
+        rs.mset({
+            f'begin_flag_{curr_step}_in_CAV_{self.cav_id}': pickle.dumps(1)
+        })
+        while True:
+            begin_flag = np.zeros(n_cav)
+            for i in range(n_cav):
+                value = rs.mget(f'begin_flag_{curr_step}_in_CAV_{i}')[0]
+                if value != None:
+                    if pickle.loads(value) == 1:
+                        begin_flag[i]=1
+            
+            if 0 not in begin_flag:
+                break
+                    
         start_time = time.time()
 
         if Hankel_update_flag:
             # generate new Hankel Matrices
             if Hankel_update_method == 1 :
                 if kappa < kappa_max:
-                    print(f"列数{kappa},增加新一列",flush=True)
+                    # print(f"列数{kappa},增加新一列",flush=True)
                     result = Hankel_substitute_col_0(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
                     kappa = kappa+1
                     lambda_gi = np.hstack((np.full(int(kappa0),lambda_gi_max),lambda_gi_online[0:int(kappa-kappa0)]))
                 else:
                     off_col = int(max(kappa - curr_step,k_on[self.cav_id]))
                     if  off_col > k_on[self.cav_id]:
-                        print(f"列数{kappa},offline剩余{off_col}列，删掉第一列增加新一列",flush=True)
+                        # print(f"列数{kappa},offline剩余{off_col}列，删掉第一列增加新一列",flush=True)
                         result = Hankel_substitute_col_1(Tini,N,Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)
                         lambda_gi = np.hstack((np.full(int(off_col),lambda_gi_max),lambda_gi_online[0:int(kappa-off_col)]))
                     else: 
-                        print(f"列数{kappa},offline剩余{off_col}列，删掉online第一列增加新一列",flush=True)
+                        # print(f"列数{kappa},offline剩余{off_col}列，删掉online第一列增加新一列",flush=True)
                         result = Hankel_substitute_col_2(Tini,N,int(k_on[self.cav_id]),Su,Sy,Se,self.Uip,self.Uif,self.Yip,self.Yif,self.Eip,self.Eif,curr_step,p,g_initial,mu_initial)         
                         lambda_gi = np.hstack((np.full(int(k_on[self.cav_id]),lambda_gi_max),lambda_gi_online))
                     
